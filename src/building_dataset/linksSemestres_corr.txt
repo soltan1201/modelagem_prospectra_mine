@@ -1,0 +1,67 @@
+2020_2 = https://code.earthengine.google.com/d363366ed97a21c100b9f0b2652f1259
+
+2020_1 = https://code.earthengine.google.com/505505f02fb07af2639cd9e0b3c28c8d
+
+2019_2 = https://code.earthengine.google.com/567ce4b33c7c2d1b0fa59874164de8ee
+
+2019_1 = https://code.earthengine.google.com/54ae6e8212cec4ff1ed05790abb3b755
+
+2018_2 = https://code.earthengine.google.com/2f98dcb655c2517d6ada725bb5191035
+
+2018_1 = https://code.earthengine.google.com/56495c91e08ff901c206c52c0c58bf86
+
+2017_2 = https://code.earthengine.google.com/790dd73689c99e044b939f6fd2a239bd
+
+2017_1 = https://code.earthengine.google.com/2228cb9024b1d877b39e8721ef0a4ec9
+
+2016_2 = https://code.earthengine.google.com/c7ee07c428efc18c302443db27d0d87d
+
+2016_1 = https://code.earthengine.google.com/f32011fc6e953f673220107132d70ed8
+
+2015_2 = https://code.earthengine.google.com/c6a77a60f847d5db52f5328d73e3c360
+
+2015_1 = https://code.earthengine.google.com/e084b92b3995fd1cbf275d6fc2081623
+
+2014_2 = https://code.earthengine.google.com/1ae5a5824b36d59a04c739e6c5d1f083
+
+2014_1 = https://code.earthengine.google.com/4fb2a380982eedc253cc72a0b77991d7
+
+2013_2 = https://code.earthengine.google.com/54719af71a67d134fa5ae24a79a7777d
+
+2013_1 = https://code.earthengine.google.com/2ac2c65cda9c232328e71707ebe19e30
+
+2012_2 = https://code.earthengine.google.com/b655ce7652e62f4464087c1cb8edddda
+
+2012_1 = ND
+
+2011_2 = https://code.earthengine.google.com/8480190123ce4ef9c3cb76caf4263c9f
+
+2011_1 = https://code.earthengine.google.com/1e685b3367da71bc4d9293e87f3314d5
+
+2010_2 = https://code.earthengine.google.com/6d7d7449811161a24595d1c1885c170d
+
+2010_1 = https://code.earthengine.google.com/912b9bf07da6913c406e1947117c5013
+
+2009_2 = https://code.earthengine.google.com/bacd1c94c8cfb8e4758c4ea8a6ac7b7d
+
+2009_1 = https://code.earthengine.google.com/fbc35acac3356dd3336ded0730e6b4ba
+
+
+
+ETAPA 01
+2008_1 = https://code.earthengine.google.com/f73059c7b2de76987951427e7eaf843f
+2007_2 = https://code.earthengine.google.com/ee561a092ebc42e6254db16ccc0ee92b
+2007_1 = https://code.earthengine.google.com/8a5dfc9d97a55742b52434c50cc98ed1
+2006_1 = https://code.earthengine.google.com/39884ae1ba602200e5abb9c7e9d0a0fe
+2005_1 = ND
+2005_2 = ND
+2004_1 = https://code.earthengine.google.com/ed818b3b3c285e5072b91722820504c1
+2004_2 = https://code.earthengine.google.com/ca00a3f69a139e4108b5e9805055ffb0
+2003_1 = https://code.earthengine.google.com/aab85ba0697abaca2cfc5b2075a1a65b
+2003_2 = https://code.earthengine.google.com/cbf0dbf67b2806f1dacbc5919216a0f5
+2002_1 = https://code.earthengine.google.com/684c8c1efdb82590731cf1c95e31bb76
+2002_2 = https://code.earthengine.google.com/9f5520e16510c8add37fe5bc047b8743   ok
+2001_1 = https://code.earthengine.google.com/c36f62d6481610af32334cdb94282dcd
+2001_2 = https://code.earthengine.google.com/41f4f3f16e3806cc0d72b7c4f9fcf74e
+2000_1 = https://code.earthengine.google.com/8724d895d00ca985c8798ce9f8d85233
+2000_2 = https://code.earthengine.google.com/4b788d39b0d938ba52626da002f1a798

@@ -1,4 +1,237 @@
 
+// Dicionário de visualização de índices e bandas
+var visualizacao_indices = {
+    // --- ÍNDICES DE VEGETAÇÃO ---
+    'NDVI': {
+        band: 'NDVI',
+        min: -1,
+        max: 1,
+        colorPalette: [
+            'red',  // Valores negativos (água, solo exposto)
+            'yellow',
+            'green',
+            'darkgreen'
+        ],
+        description: 'Índice de vegetação (verde=alta cobertura)',
+        gamma: 1.5
+    },
+    'EVI': {
+        band: 'EVI',
+        min: -0.5,
+        max: 1,
+        colorPalette: ['red', 'yellow', 'green', 'darkgreen'],
+        description: 'Índice de vegetação melhorado (mais sensível ao solo exposto)',
+        gamma: 1.5
+    },
+    'SAVI': {
+        band: 'SAVI',
+        min: -1,
+        max: 1,
+        colorPalette: ['red', 'yellow', 'green'],
+        description: 'SAVI (para solo exposto)',
+        gamma: 1.5
+    },
+    'NDWI': {
+        band: 'NDWI',
+        min: -1,
+        max: 1,
+        colorPalette: ['red', 'blue', 'green', 'darkblue'],
+        description: 'Índice de água (azul=água)',
+        gamma: 1.5
+    },
+    
+    // --- ÍNDICES DE MINERALOGIA ---
+    'sultan_r': {
+        band: 'sultan_r',
+        min: 0.6,
+        max: 2.5,
+        colorPalette: ['red', 'orange', 'yellow', 'green', 'blue'],
+        description: 'Composição Sultan (R)'
+    },
+    'sultan_g': {
+        band: 'sultan_g',
+        min: 0.6,
+        max: 2.5,
+        colorPalette: ['red', 'orange', 'yellow', 'green', 'blue'],
+        description: 'Composição Sultan (G)'
+    },
+    'sultan_b': {
+        band: 'sultan_b',
+        min: 0.6,
+        max: 2.5,
+        colorPalette: ['red', 'orange', 'yellow', 'green', 'blue'],
+        description: 'Composição Sultan (B)'
+    },
+    'abrams_r': {
+        band: 'abrams_r',
+        min: 0.6,
+        max: 2.5,
+        colorPalette: ['red', 'orange', 'yellow', 'green', 'blue'],
+        description: 'Composição Abrams (R)'
+    },
+    'abrams_g': {
+        band: 'abrams_g',
+        min: 0.6,
+        max: 2.5,
+        colorPalette: ['red', 'orange', 'yellow', 'green', 'blue'],
+        description: 'Composição Abrams (G)'
+    },
+    'abrams_b': {
+        band: 'abrams_b',
+        min: 0.6,
+        max: 2.5,
+        colorPalette: ['red', 'orange', 'yellow', 'green', 'blue'],
+        description: 'Composição Abrams (B)'
+    },
+    
+    // --- ÍNDICES DE TEXTURA (GLCM) ---
+    'contrast': {
+        band: 'AST_NIR_807nm_contrast',
+        min: 0,
+        max: 255,
+        colorPalette: ['blue', 'green', 'yellow', 'red'],
+        description: 'Contraste da textura (mais heterogêneo=vermelho)'
+    },
+    'var': {
+        band: 'AST_NIR_807nm_var',
+        min: 0,
+        max: 5000,
+        colorPalette: ['blue', 'green', 'yellow', 'red'],
+        description: 'Variância da textura'
+    },
+    'ent': {
+        band: 'AST_NIR_807nm_ent',
+        min: 0,
+        max: 10,
+        colorPalette: ['blue', 'green', 'yellow', 'red'],
+        description: 'Entropia da textura'
+    },
+    'hom': {
+        band: 'AST_NIR_807nm_hom',
+        min: 0,
+        max: 1,
+        colorPalette: ['red', 'yellow', 'green'],
+        description: 'Homogeneidade da textura'
+    },
+    
+    // --- ÍNDICES GEOLÓGICOS ---
+    'ferric_iron_2_1': {
+        band: 'ferric_iron_2_1',
+        min: 0.1,
+        max: 0.6,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Óxidos de ferro (Fe³⁺)'
+    },
+    'ferric_ox_4_3': {
+        band: 'ferric_ox_4_3',
+        min: 0.1,
+        max: 0.6,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Óxido férrico'
+    },
+    'gossan_4_2': {
+        band: 'gossan_4_2',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['red', 'orange', 'yellow', 'green'],
+        description: 'Gossan (alteração oxidativa)'
+    },
+    'ferrous_sil_5_4': {
+        band: 'ferrous_sil_5_4',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow'],
+        description: 'Sulfetos ferroso-silicato'
+    },
+    'sericite_illite_smectite': {
+        band: 'sericite_illite_smectite',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Sericita/Illita/Smectita'
+    },
+    'alunite_kaolinite_pyrophyllite': {
+        band: 'alunite_kaolinite_pyrophyllite',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Alunita/Kaolinita/Propirita'
+    },
+    'muscovite_7_6': {
+        band: 'muscovite_7_6',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Muscovita'
+    },
+    'kaolinite_7_5': {
+        band: 'kaolinite_7_5',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Kaolinita'
+    },
+    'dolomite': {
+        band: 'dolomite',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Dolomita'
+    },
+    'carbonate_13_14': {
+        band: 'carbonate_13_14',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['red', 'orange', 'yellow', 'green'],
+        description: 'Carbonatos'
+    },
+    'quartz_14_12': {
+        band: 'quartz_14_12',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Quartzo'
+    },
+    'IDX_AlOH_Clay': {
+        band: 'IDX_AlOH_Clay',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Al-OH (Caulinita/Alunita)'
+    },
+    'IDX_Carbonate': {
+        band: 'IDX_Carbonate',
+        min: 0.5,
+        max: 2.0,
+        colorPalette: ['red', 'orange', 'yellow', 'green'],
+        description: 'Carbonato/Mg-OH'
+    },
+    'IDX_Ferric_Fe': {
+        band: 'IDX_Ferric_Fe',
+        min: 0.1,
+        max: 0.6,
+        colorPalette: ['blue', 'cyan', 'green', 'yellow', 'red'],
+        description: 'Fe³⁺'
+    },
+    'IDX_NDVI': {
+        band: 'IDX_NDVI',
+        min: -1,
+        max: 1,
+        colorPalette: ['red', 'yellow', 'green', 'darkgreen'],
+        description: 'NDVI (índice geológico)'
+    },
+    'IDX_SAVI': {
+        band: 'IDX_SAVI',
+        min: -1,
+        max: 1,
+        colorPalette: ['red', 'yellow', 'green'],
+        description: 'SAVI (índice geológico)'
+    }
+};
+
+
+
+
 // ------- 7. CÁLCULO DE TEXTURAS NO MOSAICO FINAL (NÃO DURANTE O MOSAICO) -------
 function calcularTexturasFinais(img) {
     var nir = img.select('AST_NIR_807nm');
@@ -166,3 +399,48 @@ Map.addLayer(
   {min: 0.6, max: 2.5},
   'Abrams RGB'
 );
+// Exemplo de uso no Google Earth Engine
+Map.addLayer(
+    imgComMineral.select('sultan_r').divide('sultan_b').divide('sultan_g'),
+    visualizacao_indices['sultan_r'],
+    'Sultan RGB - Minerais'
+);
+
+Map.addLayer(
+    imgComMineral.select('NDVI'),
+    visualizacao_indices['NDVI'],
+    'NDVI'
+);
+
+Map.addLayer(
+    imgComMineral.select('ferric_iron_2_1'),
+    visualizacao_indices['ferric_iron_2_1'],
+    'Óxidos de Ferro (Fe³⁺)'
+);
+
+Map.addLayer(
+    imgComTextura.select('AST_NIR_807nm_hom'),
+    visualizacao_indices['hom'],
+    'Homogeneidade da Textura'
+);
+
+// Adicionar legenda
+var legenda = ui.Panel({
+    widgets: [
+      ui.Label({
+        value: 'Índices Espectrais e Minerais',
+        style: { fontSize: 16, fontWeight: 'bold' }
+      }),
+      ui.Label({
+        value: visualizacao_indices.hom.description,
+        style: { fontSize: 12, fontStyle: 'italic' }
+      }),
+      ui.Label({
+        value: 'Paleta: ' + visualizacao_indices.hom.colorPalette.join(', '),
+        style: { fontSize: 10, color: '#555' }
+      })
+    ],
+    style: { padding: '10px' }
+  });
+
+Map.addLayer(legenda, {position: 'bottom-right'});

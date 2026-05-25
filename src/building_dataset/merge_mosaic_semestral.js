@@ -28,7 +28,8 @@ var bandas_para_asset = [
 ];
 
 // ------- 2. CARREGAR MOSAICOS SEMESTRAIS -------
-var id_asset_mosaicos = 'projects/ee-solkancengine17/assets/prospectra/mosaic_aster';
+// var id_asset_mosaicos = 'projects/ee-solkancengine17/assets/prospectra/mosaic_aster';
+var id_asset_mosaicos = "projects/mapbiomas-arida/mosaic_aster";
 var mosaicos_sem = ee.ImageCollection(id_asset_mosaicos);
 
 print('📊 Total de mosaicos semestrais:', mosaicos_sem.size());
@@ -39,8 +40,8 @@ print('📋 Propriedades disponíveis:', props);
 
 // ------- 3. FUNÇÃO PARA CRIAR TIMESTAMP A PARTIR DAS PROPRIEDADES -------
 function adicionarTimestamp(img) {
-    var year = ee.Number(img.get('year'));
-    var semestre = ee.Number(img.get('semestre'));
+    var year = ee.Number.parse(img.get('year'));
+    var semestre = ee.Number.parse(img.get('semestre'));
     
     // Calcula o mês baseado no semestre (1 = Jan, 2 = Jul)
     var month = ee.Number(ee.Algorithms.If(
@@ -187,7 +188,7 @@ var mosaicos_com_quality = mosaicos_com_data.map(function(img) {
     
     // Adiciona banda de ano/semestre
     var year_semestre = ee.Image.constant(
-        ee.Number(img.get('year')).multiply(10).add(ee.Number(img.get('semestre')))
+        ee.Number.parse(img.get('year')).multiply(10).add(ee.Number.parse(img.get('semestre')))
     ).rename('year_semestre').toInt16();
     
     return img_float
@@ -249,15 +250,9 @@ Map.addLayer(mosaico_final, {
     gamma: 1.2
 }, '🌟 MOSAICO FINAL - SWIR Geologia');
 
-// Índice de Argila
-Map.addLayer(mosaico_final.select('AlOH_Clay'), {
-    min: 0.8, max: 1.4,
-    palette: ['blue', 'cyan', 'green', 'yellow', 'red']
-}, '🌟 Al-OH (Argilas)');
-
 // Frequência de observações
 Map.addLayer(mosaico_final.select('frequency'), {
-    min: 1, max: mosaicos_sem.size(),
+    min: 1, max: 20,
     palette: ['red', 'orange', 'yellow', 'green', 'darkgreen']
 }, '📊 Frequência (Nº de mosaicos)');
 
@@ -282,17 +277,17 @@ print('📅 Contribuição por mosaico:', contribuicoes);
 // ------- 14. EXPORTAÇÃO -------
 function converterPara16Bit(img) {
     var bandas = img.bandNames();
-    
+    // Bandas que já são inteiros e não precisam de fator de escala
+    var fatores_especiais = ee.Dictionary({'frequency': 1, 'year_semestre': 1});
+
     var bandas_16bit = bandas.map(function(b) {
         b = ee.String(b);
         var banda = img.select(b);
-        
         var fator = ee.Number(ee.Algorithms.If(
-            b.equals('frequency').or(b.equals('year_semestre')),
-            1,
+            fatores_especiais.contains(b),
+            fatores_especiais.get(b),
             10000
         ));
-        
         return banda.multiply(fator).round().toInt16().rename([b]);
     });
     
@@ -324,3 +319,43 @@ Export.image.toAsset({
 
 print('✅ Processamento concluído!');
 print('🎯 Mosaico final combina os melhores pixels de', mosaicos_sem.size(), 'mosaicos semestrais');
+
+// ------- 15. INSPEÇÃO DOS MOSAICOS SEMESTRAIS -------
+// Itera sobre cada mosaico semestral para inspecionar metadados e visualizar
+mosaicos_sem.evaluate(function(coll) {
+    coll.features.forEach(function(feat) {
+        var id    = feat.id;
+        var props = feat.properties;
+        var ano   = props['year']      || '??';
+        var sem   = props['semestre']  || '??';
+        var bloco = props['bloco']     || '??';
+        var nImg  = props['num_images']|| '??';
+        var label = ano + '_S' + sem + ' | bloco=' + bloco + ' | n_imgs=' + nImg;
+
+        // Metadados no console — base para decidir critério de qualidade
+        print('--- Mosaico: ' + label + ' ---');
+        print('  ID         :', id);
+        print('  Propriedades completas:', props);
+
+        var img = ee.Image(id).divide(10000).float();  // converte INT16 → reflectância
+
+        // RGB Natural (referência visual geral)
+        Map.addLayer(img, {
+            bands: ['B3N', 'B02', 'B01'],
+            min: 0.05, max: 0.35, gamma: 1.4
+        }, 'RGB ' + label, false);
+
+        // SWIR Falsa-cor (discriminação litológica)
+        Map.addLayer(img, {
+            bands: ['B04', 'B06', 'B3N'],
+            min: 0.1, max: 0.5, gamma: 1.2
+        }, 'SWIR ' + label, false);
+
+        // Brilho médio do NIR: proxy de cobertura de nuvens residuais
+        // (nuvens → NIR muito alto; sombras → NIR muito baixo)
+        Map.addLayer(img.select('B3N'), {
+            min: 0.05, max: 0.40,
+            palette: ['black', 'blue', 'green', 'yellow', 'white']
+        }, 'NIR ' + label, false);
+    });
+});
