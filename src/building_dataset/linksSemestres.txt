@@ -58,7 +58,7 @@ ETAPA 01
 2003_2 = https://code.earthengine.google.com/9539d90b0b6b417fd97f5485a0a98a2d
 2002_1 = https://code.earthengine.google.com/684c8c1efdb82590731cf1c95e31bb76
 2002_2 = https://code.earthengine.google.com/77207acf8ddcf62d4e648a87fe8f8d57
-2001_1 = https://code.earthengine.google.com/8e90b7ab082a432c88ecd3f9d3904409
+2001_1 = https://code.earthengine.google.com/de0aaea883e1353fce11f7466699d4bc
 2001_2 = https://code.earthengine.google.com/f1f9984ac3babb7d9bc3828cee3ee7b7
 2000_1 = https://code.earthengine.google.com/e11f6e824f2b0b3cf8a07af54557c5f5
 2000_2 = https://code.earthengine.google.com/d8534a618ed80f328a82379cf30e81e4

@@ -1,0 +1,15 @@
+Name 	Description                       	Min 	Max 	Resolution 	Wavelength 
+B01 	VNIR_Band1 (visible green/yellow) 	1   	255 	15 meters	0.520-0.600μm
+B02 	VNIR_Band2 (visible red)          	1   	255 	15 meters	0.630-0.690μm
+B3N 	VNIR_Band3N (near infrared)       	1   	255 	15 meters	0.780-0.860μm
+B04 	SWIR_Band4 (short-wave infrared)	1   	255 	30 meters	1.600-1.700μm
+B05 	SWIR_Band5 (short-wave infrared)	1   	255 	30 meters	2.145-2.185μm
+B06 	SWIR_Band6 (short-wave infrared)	1   	255 	30 meters	2.185-2.225μm
+B07 	SWIR_Band7 (short-wave infrared)	1   	255 	30 meters	2.235-2.285μm
+B08 	SWIR_Band8 (short-wave infrared)	1   	255 	30 meters	2.295-2.365μm
+B09 	SWIR_Band9 (short-wave infrared)	1   	255 	30 meters	2.360-2.430μm
+B10 	TIR_Band10 (thermal infrared)   	1   	4095 	90 meters	8.125-8.475μm
+B11 	TIR_Band11 (thermal infrared)   	1   	4095 	90 meters	8.475-8.825μm
+B12 	TIR_Band12 (thermal infrared)   	1   	4095 	90 meters	8.925-9.275μm
+B13 	TIR_Band13 (thermal infrared)   	1   	4095 	90 meters	10.250-10.950μm
+B14 	TIR_Band14 (thermal infrared)   	1   	4095 	90 meters	10.950-11.650μm

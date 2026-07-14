@@ -30,40 +30,74 @@ var vis_raw = {
     layer_masc: { min: 0, max: 2, palette: ['black', 'red', 'blue'] }
 }
 var properti_CC = "CLOUDCOVER";
-var ano = 2002;
-var mes = 6; 
+var ano = 2009;
+var mes = 1; 
 var semestre = '2';
+if (mes === 1){semestre = '1';}
 // 🛑 COLE AQUI OS IDs DAS IMAGENS QUE VOCÊ QUER REMOVER
 // Você encontra o ID clicando na imagem no mapa ou no Console
 var blacklist = [
     // 'ASTER/AST_L1T_003/20210715132455', // Exemplo de ID (substitua pelos reais)
-    "ASTER/AST_L1T_003/20020812130713",
-    "ASTER/AST_L1T_003/20020812130722",
-    "ASTER/AST_L1T_003/20020812130731",
-    "ASTER/AST_L1T_003/20020812130740",
-    "ASTER/AST_L1T_003/20020812130749",
-    "ASTER/AST_L1T_003/20020911131942",
-    "ASTER/AST_L1T_003/20020911131950",
-    "ASTER/AST_L1T_003/20020913130712",
-    "ASTER/AST_L1T_003/20020913130721",
-    "ASTER/AST_L1T_003/20020913130730",
-    "ASTER/AST_L1T_003/20020913130739",
-    "ASTER/AST_L1T_003/20020913130748",
-    "ASTER/AST_L1T_003/20020913130814",
-    "ASTER/AST_L1T_003/20020913130823",
-    "ASTER/AST_L1T_003/20020913130832",
-    "ASTER/AST_L1T_003/20020915125535",
-    "ASTER/AST_L1T_003/20020915125602",
-    "ASTER/AST_L1T_003/20020915125611",
-    "ASTER/AST_L1T_003/20020915125619",
-    "ASTER/AST_L1T_003/20021022131259",
-    "ASTER/AST_L1T_003/20021022131308",
-    "ASTER/AST_L1T_003/20021022131316",
-    "ASTER/AST_L1T_003/20021022131325",
-    "ASTER/AST_L1T_003/20021022131410",
-    "ASTER/AST_L1T_003/20021022131418",
-    "ASTER/AST_L1T_003/20021022131427",
-    "ASTER/AST_L1T_003/20020915125553",
+    "ASTER/AST_L1T_003/20090628130700",
+    "ASTER/AST_L1T_003/20090628130625",
+    "ASTER/AST_L1T_003/20090628130634",
+    "ASTER/AST_L1T_003/20090621130047",
+    "ASTER/AST_L1T_003/20090619131252",
+    "ASTER/AST_L1T_003/20090619131243",
+    "ASTER/AST_L1T_003/20090614125517",
+    "ASTER/AST_L1T_003/20090612130740",
+    "ASTER/AST_L1T_003/20090612130713",
+    "ASTER/AST_L1T_003/20090612130731",
+    "ASTER/AST_L1T_003/20090612130638",
+    "ASTER/AST_L1T_003/20090612130620",
+    "ASTER/AST_L1T_003/20090605130023",
+    "ASTER/AST_L1T_003/20090603131304",
+    "ASTER/AST_L1T_003/20090603131255",
+    "ASTER/AST_L1T_003/20090527130631",
+    "ASTER/AST_L1T_003/20090520130134",
+    "ASTER/AST_L1T_003/20090520130116",
+    "ASTER/AST_L1T_003/20090513125509",
+    "ASTER/AST_L1T_003/20090513125500",
+    "ASTER/AST_L1T_003/20090504130149",
+    "ASTER/AST_L1T_003/20090502131336",
+    "ASTER/AST_L1T_003/20090425130727",
+    "ASTER/AST_L1T_003/20090425130736",
+    "ASTER/AST_L1T_003/20090425130745",
+    "ASTER/AST_L1T_003/20090418130033",
+    "ASTER/AST_L1T_003/20090416131406",
+    "ASTER/AST_L1T_003/20090416131330",
+    "ASTER/AST_L1T_003/20090407131915",
+    "ASTER/AST_L1T_003/20090310125539",
+    "ASTER/AST_L1T_003/20090317130116",
+    "ASTER/AST_L1T_003/20090317130142",
+    "ASTER/AST_L1T_003/20090310125521",
+    "ASTER/AST_L1T_003/20090301130155",
+    "ASTER/AST_L1T_003/20090301130120",
+    "ASTER/AST_L1T_003/20090301130129",
+    "ASTER/AST_L1T_003/20090301130138",
+    "ASTER/AST_L1T_003/20090301130147",
+    "ASTER/AST_L1T_003/20090301130053",
+    "ASTER/AST_L1T_003/20090213130027",
+    "ASTER/AST_L1T_003/20090126131322",
+    "ASTER/AST_L1T_003/20090121125458",
+    "ASTER/AST_L1T_003/20090121125507",
+    "ASTER/AST_L1T_003/20090117131856",
+    "ASTER/AST_L1T_003/20090112130133",
+    "ASTER/AST_L1T_003/20090112130057",
+    "ASTER/AST_L1T_003/20090112130106",
+    "ASTER/AST_L1T_003/20090112130115",
+    "ASTER/AST_L1T_003/20090112130124",
+    "ASTER/AST_L1T_003/20090110131252",
+    "ASTER/AST_L1T_003/20090103130705",
+    "ASTER/AST_L1T_003/20090103130647",
+    "ASTER/AST_L1T_003/20090103130638",
+    "ASTER/AST_L1T_003/20090310125503",
+    "ASTER/AST_L1T_003/20090310125548",
+    "ASTER/AST_L1T_003/20090326125533",
+    "ASTER/AST_L1T_003/20090407131857",
+    "ASTER/AST_L1T_003/20090614125450",
+    "ASTER/AST_L1T_003/20090619131217",
+    "ASTER/AST_L1T_003/20090630125437",
 ];
 // Extrai o ID final e adiciona prefixo "1_" para corresponder ao system:index do ASTER
 var blacklist_clean = ee.List(blacklist.map(function(id) {
@@ -71,6 +105,21 @@ var blacklist_clean = ee.List(blacklist.map(function(id) {
 }));
 
 print('Blacklist limpa:', blacklist_clean);
+
+var list_Cloud_zero = [    
+    "ASTER/AST_L1T_003/20090101131917",
+    "ASTER/AST_L1T_003/20090525132004",
+    "ASTER/AST_L1T_003/20090525132013",
+    "ASTER/AST_L1T_003/20090527130657",
+    "ASTER/AST_L1T_003/20090619131328",
+    "ASTER/AST_L1T_003/20090619131328",
+    "ASTER/AST_L1T_003/20090626131915",
+]
+var Cloudlist_clean = ee.List(list_Cloud_zero.map(function(id) {
+    return id.split('/').pop();  //'1_' +
+}));
+
+print('Cloudlist limpa:', Cloudlist_clean);
 
 var data_inicio = ee.Date.fromYMD(ano, mes, 1);
 var data_fim = data_inicio.advance(6, 'month');
@@ -120,6 +169,31 @@ function radianceToTOA(imgRad) {
                 .copyProperties(imgRad, imgRad.propertyNames());
 }
 
+// Calcula SAVI, NDWI partir de uma imagem ASTER TOA (reflectância)
+// Bandas ASTER usadas: B01=Verde, B02=Vermelho, B3N=NIR, B04=SWIR1(1.6µm), B05=SWIR2(2.1µm)
+function addIndicesASTER(img) {
+    img = ee.Image(img);
+    var green = img.select('B01');  // Verde  0.52–0.60µm
+    var red   = img.select('B02');  // Vermelho 0.63–0.69µm
+    var nir   = img.select('B3N');  // NIR  0.76–0.86µm
+    var swir1 = img.select('B04');  // SWIR1 1.60–1.70µm
+    var swir2 = img.select('B05');  // SWIR2 2.145–2.185µm
+
+    // SAVI - Soil-Adjusted Vegetation Index
+    // Fórmula: 1.5·(NIR − RED) / (NIR + RED + 0.5) | Vegetação esparsa, Caatinga, cerrado aberto
+    var savi = nir.subtract(red).multiply(1.5)
+                  .divide(nir.add(red).add(0.5))
+                  .rename('SAVI');
+
+    // NDWI - Normalized Difference Water Index (McFeeters, 1996)
+    // Fórmula: (GREEN − NIR) / (GREEN + NIR) | Água livre; valores > 0 indicam superfície hídrica
+    var ndwi = green.subtract(nir)
+                    .divide(green.add(nir).add(1e-6))
+                    .rename('NDWI');   
+
+    return img.addBands([savi, ndwi]);
+}
+
 //https://code.earthengine.google.com/c7e78ccf5cc1de6273432f777b774377
 function mascaraNuvemASTER(imgToa) {
 
@@ -149,7 +223,6 @@ function mascaraNuvemASTER(imgToa) {
         .max(200)   // Distância mínima: 200m
         .min(2000); // Distância máxima: 2000m
 
-    var ndvi = nir.subtract(red).divide(nir.add(red)).rename('NDVI');
     // brilho visível
     var visBright = green.add(red).add(nir).divide(3);
 
@@ -196,7 +269,7 @@ function mascaraNuvemASTER(imgToa) {
     var valid = imgToa.select(['B01','B02','B3N','B04']).reduce(ee.Reducer.min()).gt(0);
     var clear = valid.and(cloud.not()).and(shadow.not()).rename('clear_mask');
 
-    return imgToa.addBands([ndvi])
+    return addIndicesASTER(imgToa)
                 .updateMask(clear)
                 copyProperties(imgToa, imgToa.propertyNames());
 }
@@ -213,8 +286,9 @@ function addQualityASTER_v2(img) {
     
     // === 2. ÍNDICES ESPECTRAIS PARA QUALIDADE ===
     
-    // NDVI: vegetação saudável tem assinatura estável
-    var ndvi = nir.subtract(green).divide(nir.add(green).add(1e-6));
+    // SAVI - Soil-Adjusted Vegetation Index
+    // Fórmula: 1.5·(NIR − RED) / (NIR + RED + 0.5) | Vegetação esparsa, Caatinga, cerrado aberto
+    var savi = nir.subtract(green).multiply(1.5).divide(nir.add(green).add(0.5).add(1e-6));
     
     // NDSI simplificado para detecção de nuvens (brilho + SWIR)
     var ndsi = green.subtract(swir1).divide(green.add(swir1).add(1e-6));
@@ -233,8 +307,8 @@ function addQualityASTER_v2(img) {
     
     // === 4. CONSTRUIR SCORE DE QUALIDADE PIXEL A PIXEL ===
     
-    // Componente 1: Preferir NDVI moderado-alto (evita água/nuvem)
-    var scoreNdvi = ndvi.unitScale(-0.2, 0.7);  // -0.2 a 0.7 → 0 a 1
+    // Componente 1: Preferir SAVI moderado-alto (evita água/nuvem)
+    var scoreNdvi = savi.unitScale(-0.2, 0.7);  // -0.2 a 0.7 → 0 a 1
     
     // Componente 2: Penalizar brilho excessivo (nuvens)
     var scoreBright = ee.Image(1).subtract(
@@ -292,77 +366,66 @@ function addQualityASTER_v2(img) {
 
 function addQualityASTER_CC0(img) {
   // === 1. SELEÇÃO DE BANDAS ===
-  var base_qual  = img.select('B01').gt(0).multiply(25000);
+  var base_qual  = img.select('B01').gt(0).multiply(22000);   // antes do 2009 25000
   return img.addBands(base_qual.rename('quality'));
   
 }
 
 
-// 👉 FUNÇÃO QUALITY (PARA QUALITYMOSAIC)
-// 👉 FUNÇÃO QUALIDADE LIGHT + SOMBRAS (PERFORMANCE + PRECISÃO)
-// 👉 FUNÇÃO QUALIDADE COM PENALIDADE RÍGIDA PARA SOMBRAS
-// 👉 FUNÇÃO QUALIDADE V5 - CORREÇÃO DE SOMBRAS E ÁGUA
+// 👉 FUNÇÃO QUALIDADE V6 — VNIR + TIR (sem SWIR, compatível com ASTER pós-2008)
+// Discriminadores principais:
+//   TIR (B10): nuvens frias (~970-1014) vs superfície quente (~1160-1245)
+//   Brilho VNIR: nuvens muito brilhantes (>0.35), sombras muito escuras (<0.09)
+//   SAVI: alto em vegetação → prefere pixels vegetados
+//   NDWI: muito negativo em vegetação (-0.40), próximo a 0 em nuvens (-0.12)
 function addQualityASTER_v5_shadow_fix(img) {
-  
+
   // === 1. SELEÇÃO DE BANDAS ===
-  var b1  = img.select('B01');
-  var b2  = img.select('B02');
-  var b3n = img.select('B3N');
-  var b4  = img.select('B04');
+  var b1  = img.select('B01');  // Verde
+  var b2  = img.select('B02');  // Vermelho
+  var b3n = img.select('B3N');  // NIR
+  var b10 = img.select('B10');  // TIR — principal separador nuvem/superfície
 
-  // === 2. ÍNDICES BASE ===
-  var ndvi = b3n.subtract(b2).divide(b3n.add(b2).add(1e-6));
-  var brightness = b1.add(b2).add(b3n).add(b4).divide(4);
-  var ndsi = b2.subtract(b4).divide(b2.add(b4).add(1e-6));
+  // === 2. ÍNDICES ESPECTRAIS ===
+  var savi = b3n.subtract(b2).multiply(1.5).divide(b3n.add(b2).add(0.5).add(1e-6));
+  var ndwi = b1.subtract(b3n).divide(b1.add(b3n).add(1e-6));
+  var brightness = b1.add(b2).add(b3n).divide(3);
 
-  // === 3. SCORE BASE (Mantendo lógica anti-nuvem) ===
-  // Penaliza brilho excessivo (nuvens) e NDSI alto
-  var q_bright = ee.Image(1).subtract(brightness.unitScale(0.15, 0.5));
-  var q_ndsi   = ee.Image(1).subtract(ndsi.unitScale(0.2, 0.6));
-  var q_ndvi   = ndvi.unitScale(-0.1, 0.6); 
+  // === 3. SCORES INDIVIDUAIS ===
 
-  var base_quality = q_bright.multiply(0.4)
-                             .add(q_ndsi.multiply(0.3))
-                             .add(q_ndvi.multiply(0.3))
-                             .clamp(0, 1);
+  // TIR: superfície quente = alta qualidade; nuvem fria = qualidade zero
+  // Intervalos medidos: nuvem B10~970-1014; sombra~1091; veg~1160-1191; solo~1245
+  var tir_score = b10.unitScale(1050, 1300).clamp(0, 1);
 
-  // === 4. DETECÇÃO RÍGIDA DE SOMBRAS (NOVO) ===
-  // Lógica: Sombra é um pixel MUITO escuro que NÃO é água.
-  
-  // a) Identificar Água (Absorve forte no SWIR e NIR)
-  // Água típica: B4 < 0.04 e B3N < 0.06
-  var is_water = b4.lt(0.04).and(b3n.lt(0.06));
-  
-  // b) Identificar Escuridão Extrema (Limiar de Sombra)
-  // Pixels com B3N < 0.10 são suspeitos de serem sombra (ou água)
-  var is_dark = b3n.lt(0.10);
-  
-  // c) Máscara Final: É escuro E NÃO é água -> É Sombra
-  var shadow_mask = is_dark.and(is_water.not());
-  
-  // Suavização leve para pegar bordas de sombra (penumbra)
-  shadow_mask = shadow_mask.focal_max({radius: 30, units: 'meters'});
+  // Brilho: U-invertido — penaliza escuro (sombra) e brilhante (nuvem), premia moderado
+  var bright_up   = brightness.unitScale(0.07, 0.16).clamp(0, 1);
+  var bright_down = ee.Image(1).subtract(brightness.unitScale(0.22, 0.42).clamp(0, 1));
+  var bright_score = bright_up.multiply(bright_down);
+
+  // SAVI: vegetação densa → 1; solo/nuvem → menor pontuação
+  var savi_score = savi.unitScale(-0.1, 0.5).clamp(0, 1);
+
+  // NDWI: quanto mais negativo, mais vegetado; nuvens têm NDWI próximo a 0
+  var ndwi_score = ndwi.multiply(-1).unitScale(-0.10, 0.45).clamp(0, 1);
+
+  // === 4. QUALIDADE COMBINADA ===
+  var base_quality = tir_score.multiply(0.45)
+                              .add(bright_score.multiply(0.25))
+                              .add(savi_score.multiply(0.15))
+                              .add(ndwi_score.multiply(0.15))
+                              .clamp(0, 1);
 
   // === 5. BÔNUS DE CLOUD COVER ===
   var cc = ee.Number(img.get('CLOUDCOVER'));
-  // Bônus escalonado + bônus extra para cena 100% limpa
-  var cloud_bonus = ee.Image(1).subtract(cc.divide(80).min(1)).multiply(0.8);
-  var perfect_bonus = cc.eq(0).multiply(0.3); 
+  var cloud_bonus  = ee.Image(1).subtract(cc.divide(80).min(1)).multiply(0.8);
+  var perfect_bonus = cc.eq(0).multiply(0.3);
 
-  // === 6. APLICAÇÃO DO TETO DE QUALIDADE (O PULO DO GATO) ===
-  
-  // Calcula qualidade potencial (base + bônus)
-  var potential_quality = base_quality.add(cloud_bonus).add(perfect_bonus);
-  
-  // 🔒 CRÍTICO: Se for sombra, FORÇA qualidade para 0.1 (valor baixo).
-  // Isso anula qualquer bônus e garante que sombra PERCA para pixel limpo.
-  var final_quality = ee.Image(0.1) 
-                          .where(shadow_mask.not(), potential_quality)
-                          .clamp(0, 2.0);
+  var final_quality = base_quality.add(cloud_bonus).add(perfect_bonus).clamp(0, 2.0);
 
-  // === 7. MÁSCARA DE VALIDADE ===
+  // === 6. MÁSCARA DE VALIDADE ===
   var valid = b1.mask().and(brightness.gt(0.005));
-  
+  final_quality = final_quality.updateMask(valid);
+
   return img.addBands(final_quality.rename('quality'));
 }
 
@@ -384,7 +447,8 @@ function converterPara16Bit(img) {
         'B12': 10,
         'B13': 10,
         'B14': 10,
-        'NDVI': 10000,   // -1 a 1 -> -10000 a 10000
+        'SAVI': 10000,   // -1 a 1  -> -10000 a 10000
+        'NDWI': 10000,   // -1 a 1  -> -10000 a 10000
         'quality': 10000
     };
     
@@ -436,27 +500,24 @@ var colecao_base = ee.ImageCollection('ASTER/AST_L1T_003')
                     .filter(ee.Filter.lt('CLOUDCOVER', 70));
                     
 var total_nFilter = colecao_base.size();
-
+print(" total sem filtros ", total_nFilter);
 colecao_base = colecao_base
                     .filter(ee.Filter.inList('system:index', blacklist_clean).not())
                     .map(radianceToTOA);
 
-// Imagens sem nuvens: CLOUDCOVER == 0 → não aplica máscara, mas adiciona NDVI para homogeneidade
-var colecao_cc0 = colecao_base.filter(ee.Filter.eq(properti_CC, 0))
+
+
+// Imagens sem nuvens: CLOUDCOVER == 0 → não aplica máscara, mas adiciona SAVI/NDWI para homogeneidade
+var colecao_cc0 = colecao_base.filter(ee.Filter.inList('system:index', Cloudlist_clean))
                     .map(function(img) {
-                        var ndvi = img.select('B3N').subtract(img.select('B02'))
-                                      .divide(img.select('B3N').add(img.select('B02')))
-                                      .rename('NDVI');
-                        var base_qual  = img.select('B01').gt(0).multiply(2.5);
-                        return img.addBands(ndvi).addBands(base_qual.rename('quality'));
+                        var base_qual = img.select('B01').gt(0).multiply(2.5);
+                        return addIndicesASTER(img).addBands(base_qual.rename('quality'));
                     });
 // Imagens com nuvens: CLOUDCOVER >= 1 → aplica mascaraNuvemASTER (já adiciona NDVI)
 var colecao_cc_nuvens = colecao_base.filter(ee.Filter.gte(properti_CC, 1))
                              .map(mascaraNuvemASTER)
                              .map(addQualityASTER_v5_shadow_fix);  // 👈 Nova função
                              
-                             
-print("imagens com nuvens ", colecao_base.filterBounds(point));
 
 var colecao = colecao_cc0.merge(colecao_cc_nuvens);
 var numero_img = colecao.size();
@@ -464,27 +525,27 @@ print("Total de imagens:", numero_img);
 
 // ------- 4. QUALITY MOSAIC (MELHOR QUE MEDIAN) -------
 var mosaico_quality = colecao.qualityMosaic('quality').clip(area_estudo);
-
+mosaico_quality = mosaico_quality.updateMask(mosaico_quality.select('B01').gt(0));
 print("✅ Mosaico Quality criado:", mosaico_quality);
-print(" total sem filtros ", total_nFilter);
+
 print(colecao.limit(10));
 // ------- 4. VISUALIZAÇÃO -------
 // Map.centerObject(area_estudo, 8);
 
 // Mosaico Resultante (Sem as imagens da Blacklist)
 // RGB Natural
-// Map.addLayer(mosaico_quality, {
-//     bands: ['B3N', 'B02', 'B01'],
-//     min: 0.05, max: 0.35,
-//     gamma: 1.4
-// }, 'Quality Mosaic - RGB');
+Map.addLayer(mosaico_quality, {
+    bands: ['B3N', 'B02', 'B01'],
+    min: 0.05, max: 0.35,
+    gamma: 1.4
+}, 'Quality Mosaic - RGB');
+var vis_index = {
+    ind_savi : {min: -0.04, max: 0.5, palette: ["#e3dc1c", "#51b254"]},
+    ind_ndwi : {min: -0.6, max: 0.3, palette: ["#c8a96e", "#0e5faf"]},
+}
+Map.addLayer(mosaico_quality.select("SAVI"), vis_index.ind_savi, 'SAVI Mosaic', false);
+Map.addLayer(mosaico_quality.select("NDWI"), vis_index.ind_ndwi, 'NDWI Mosaic', false);
 
-// // Falsa-cor Geológica
-// Map.addLayer(mosaico_quality, {
-//     bands: ['B04', 'B06', 'B3N'],
-//     min: 0.1, max: 0.5,
-//     gamma: 1.2
-// }, 'SWIR Falsa-cor');
 
 // ------- 6. CONVERSÃO PARA 16-BIT E EXPORTAÇÃO -------
 var mosaico_16bit = ee.Image(converterPara16Bit(mosaico_quality));
@@ -513,8 +574,9 @@ Map.addLayer(mosaico_16bit.select('quality'), {
 var bandas_para_asset = [
     'B01', 'B02', 'B3N',           // VNIR 15m
     'B04', 'B05', 'B06', 'B07', 'B08', 'B09',  // SWIR 30m   
+    'B10','B11','B12','B13','B14', 'quality'
 ];
-var id_output = 'projects/mapbiomas-arida/mosaic_aster/';
+var id_output = 'projects/mapbiomas-arida/mosaic_aster_p2008/';
 
 var name_to_export = 'ASTER_QualityMosaic_' + ano + '_semestre_' + semestre + '_INT16';
 // 👉 EXPORTAR PARA ASSET (Formato 16-bit)
