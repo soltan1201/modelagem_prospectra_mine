@@ -162,7 +162,9 @@ function converterPara16Bit(img) {
     
     var bandas_16bit = bandas.map(function(b) {
         b = ee.String(b);
-        var fator = ee.Number(escala[b] || 10000);  // Default 10000
+        // b é ee.String (servidor): escala[b] no JS nunca casa e caía sempre
+        // no default 10000 (TIR estourava INT16 → 32767). Busca no servidor:
+        var fator = ee.Number(ee.Dictionary(escala).get(b, 10000));  // Default 10000
         
         var banda = img.select(b)
             .multiply(fator)

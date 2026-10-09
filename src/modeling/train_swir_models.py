@@ -7,7 +7,10 @@ Modelos treinados por banda alvo (6 bandas × 3 modelos = 18 modelos):
   XGB  — XGBoost                (RandomizedSearchCV + KFold)
   GPR  — Gaussian Process       (subamostrado, kernel ARD-RBF)
 
-Entrada : data/samples/*.csv   (CSVs baixados do Google Drive)
+Entrada : src/Dados/ASTER_Samples/*.csv   (CSVs baixados do Google Drive)
+          Seleção de CSVs via CSV_SELECAO ou pela linha de comando:
+            python train_swir_models.py --listar
+            python train_swir_models.py --csv 0 3 2007_semestre_1
 Saídas  : models/
             scaler.joblib
             pls_{banda}.joblib / xgb_{banda}.joblib / gpr_{banda}.joblib
@@ -18,6 +21,7 @@ Saídas  : models/
 import os
 import json
 import glob
+import argparse
 import logging
 import warnings
 from pathlib import Path
@@ -47,8 +51,13 @@ log = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 # PARÂMETROS
 # ═══════════════════════════════════════════════════════════════════════════
-CSV_DIR    = 'data/samples'   # pasta com CSVs baixados do Google Drive
+CSV_DIR    = Path('/home/superuser/Dados/proj/prosprectra/modelagem_prospectra_mine'
+                  '/src/Dados/ASTER_Samples')   # CSVs baixados do Google Drive
+# Quais CSVs usar: None → todos; ou lista de índices (ver --listar)
+# e/ou trechos do nome. Ex.: [0, 3]  ou  ['2003_semestre_1', '2007']
+CSV_SELECAO = None
 MODELS_DIR = Path('models')   # saída: modelos + artefatos
+INT16_MAX  = 32767            # valor de saturação/estouro no export INT16
 
 N_JOBS      = -1    # -1 = todos os núcleos da CPU
 N_CV        = 5     # folds para KFold
@@ -112,14 +121,45 @@ def avaliar(y_true, y_pred, modelo: str, banda: str) -> dict:
 # CARGA E PREPARAÇÃO DOS DADOS
 # ═══════════════════════════════════════════════════════════════════════════
 
-def carregar_dados() -> tuple[np.ndarray, np.ndarray]:
+def listar_csvs() -> list[str]:
     arquivos = sorted(glob.glob(os.path.join(CSV_DIR, '*.csv')))
     if not arquivos:
-        raise FileNotFoundError(f'Nenhum CSV encontrado em {CSV_DIR!r}')
+        raise FileNotFoundError(f'Nenhum CSV encontrado em {str(CSV_DIR)!r}')
+    return arquivos
+
+
+def selecionar_csvs(arquivos: list[str], selecao) -> list[str]:
+    """selecao: None (todos) ou lista de índices e/ou trechos do nome."""
+    if not selecao:
+        return arquivos
+    escolhidos = []
+    for item in selecao:
+        if isinstance(item, int) or (str(item).isdigit() and int(item) < len(arquivos)):
+            escolhidos.append(arquivos[int(item)])
+        else:
+            achados = [f for f in arquivos if str(item) in Path(f).name]
+            if not achados:
+                raise ValueError(f'Nenhum CSV contém {item!r} no nome')
+            escolhidos += achados
+    return list(dict.fromkeys(escolhidos))   # sem duplicatas, ordem mantida
+
+
+def diagnosticar_saturacao(df: pd.DataFrame) -> None:
+    """% de valores = INT16_MAX por banda (estouro/saturação no export)."""
+    for banda in FEATURES + TARGETS:
+        frac = float((df[banda] >= INT16_MAX).mean())
+        if frac > 0:
+            log.warning(f'  {banda}: {frac:.1%} dos pontos = {INT16_MAX} (saturado)')
+
+
+def carregar_dados(arquivos: list[str]) -> tuple[np.ndarray, np.ndarray]:
     log.info(f'Carregando {len(arquivos)} CSV(s)...')
+    for f in arquivos:
+        log.info(f'  {Path(f).name}')
 
     df = pd.concat([pd.read_csv(f) for f in arquivos], ignore_index=True)
     log.info(f'Registros brutos: {len(df):,}')
+    diagnosticar_saturacao(df)
 
     # Converter INT16 → unidade física
     for col, fator in SCALE.items():
@@ -141,7 +181,20 @@ def carregar_dados() -> tuple[np.ndarray, np.ndarray]:
     )
 
 
-X, Y = carregar_dados()
+parser = argparse.ArgumentParser(description='Treino local dos modelos SWIR.')
+parser.add_argument('--csv', nargs='+', default=None,
+                    help='índices e/ou trechos do nome dos CSVs (padrão: CSV_SELECAO)')
+parser.add_argument('--listar', action='store_true',
+                    help='lista os CSVs disponíveis com índice e sai')
+args = parser.parse_args()
+
+todos_csvs = listar_csvs()
+if args.listar:
+    for i, f in enumerate(todos_csvs):
+        print(f'{i:3d}  {Path(f).name}')
+    raise SystemExit
+
+X, Y = carregar_dados(selecionar_csvs(todos_csvs, args.csv or CSV_SELECAO))
 
 X_tr, X_te, Y_tr, Y_te = train_test_split(
     X, Y, test_size=0.2, random_state=SEED

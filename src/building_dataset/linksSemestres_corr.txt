@@ -44,12 +44,3 @@ ETAPA 01
 2000_1 = https://code.earthengine.google.com/1c495eb9a10bf17b9565270b80369aa8  
 2000_2 = https://code.earthengine.google.com/1a885de72acff3edcd5dec2b54b5e793   
 
-
-2017_1 = https://code.earthengine.google.com/d361fa4c36e3b71357bcfbf507cbf5fd
-2017_2 = https://code.earthengine.google.com/5e376af7f851e4649ca08ce561dcd77e
-2018_1 = https://code.earthengine.google.com/a94a681c1e4459d9463a5b6e0834edd8
-2018_2 = https://code.earthengine.google.com/31fc2d8a53893ecd4e22d6eda608e0b2
-2019_1 = https://code.earthengine.google.com/833068a3677331ac2cefd57b62c9358c
-2019_2 = https://code.earthengine.google.com/4b1e2bd8d0e3f99290df44f655cc7544
-2020_1 = https://code.earthengine.google.com/23f9208c418b0984089cff9411af26c7
-2020_2  = https://code.earthengine.google.com/fce46da431b7fae4a1cba1d27199341f

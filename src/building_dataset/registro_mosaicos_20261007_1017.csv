@@ -1,0 +1,11 @@
+ano,semestre,status,total_cc_lt_70,apos_blacklist,zero_cloud,com_mascara,asset,conta,task_id
+2000,1,exportando,24,6,2,4,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2000_semestre_1_INT32,caatinga01,GFG3CLXDBOKTLQDMWD7RRIHO
+2000,2,exportando,154,87,10,77,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2000_semestre_2_INT32,caatinga01,SSTDVU3VSHOQBJ3XJFPR6BGF
+2001,1,exportando,232,84,9,75,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2001_semestre_1_INT32,caatinga02,LESYUI4EVWBWD6GONQJMUTUO
+2001,2,exportando,130,40,7,33,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2001_semestre_2_INT32,caatinga02,YOSY5OSUNV64VLQPUCU2ZINW
+2002,1,exportando,25,23,0,23,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2002_semestre_1_INT32,caatinga03,I62GNJWJHHHCNMP5GAMC23AO
+2002,2,exportando,44,17,4,13,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2002_semestre_2_INT32,caatinga03,PEC5WQXRXV6YRD7PA5GTLDYB
+2003,1,exportando,7,6,4,2,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2003_semestre_1_INT32,caatinga04,DUP4ANHT4NJ3E5QYG4RQO7GK
+2003,2,exportando,41,9,1,8,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2003_semestre_2_INT32,caatinga04,B2E52Y74OCLNGRZYFCF22Z6K
+2004,1,exportando,22,5,0,5,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2004_semestre_1_INT32,caatinga05,EFZZWHUH4SBHNWRY7FISKWP4
+2004,2,exportando,4,1,0,1,projects/mapbiomas-arida/mosaic_aster_v2/ASTER_QualityMosaic_2004_semestre_2_INT32,caatinga05,U53XHTEYQGTHDGJ2444SXWTB

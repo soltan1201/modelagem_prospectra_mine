@@ -18,8 +18,8 @@ var raio_borda_nuvem = 180;    // => Vai para: cloud.focal_max({radius: raio_bor
 
 // 2. Limiares de Sombra 
 var altura_nuvem_estimada = 2000; // => Vai para: shadow_dist = ee.Number(altura_nuvem_estimada)
-var lim_escuro_green = 0.18;   // => Vai para: green.lt(lim_escuro_green) 
-var lim_escuro_nir = 0.20;    // => Vai para: nir.lt(lim_escuro_nir) 
+var lim_escuro_green = 0.12;   // => Vai para: green.lt(lim_escuro_green)  [era 0.18 com TOA sem ganho; ÷1,49]
+var lim_escuro_nir = 0.17;    // => Vai para: nir.lt(lim_escuro_nir)  [era 0.20 com TOA sem ganho; ÷1,17]
 var raio_borda_sombra = 90;    // => Vai para: shadow.focal_max({radius: raio_borda_sombra})
 
 var vis_raw = {
@@ -127,13 +127,19 @@ var data_fim = data_inicio.advance(6, 'month');
 // ------- 2. FUNÇÕES DE PROCESSAMENTO -------
 
 // -----------------------------
-// 2) Radiância -> reflectância TOA
-// apenas VNIR/SWIR
+// 2) DN -> radiância -> reflectância TOA
+// apenas VNIR/SWIR; TIR segue em DN (escala ×10 no converterPara16Bit)
 // -----------------------------
+// DN ≥ 254 em VNIR = saturado (B01/B02 vêm em ganho HGH e estouram em solo
+// claro/nuvem). O pixel inteiro é mascarado para outra cena preencher no qualityMosaic.
+var DN_SATURADO = 254;
+
 function radianceToTOA(imgRad) {
-    // ASTER L1T já vem em RADIÂNCIA (W/m²/sr/µm)
-    // Não precisa converter de DN! Os valores já são radiância.
-    imgRad = ee.Image(imgRad);  
+    // ASTER/AST_L1T_003 vem em DN, NÃO em radiância:
+    //   radiância = (DN − 1) × GAIN_COEFFICIENT_Bxx   (W/m²/sr/µm; DN = 0 → sem dado)
+    // Sem o ganho, o TOA saía 1,2–1,5× alto no VNIR e 4,6–31× alto no SWIR
+    // (SWIR estourava o INT16 em 18–34% dos pixels — ver analise_todas_bandas.py).
+    imgRad = ee.Image(imgRad);
     
     var ESUN = {
         'B01': 1848, 'B02': 1549,  'B3N': 1114,
@@ -154,18 +160,25 @@ function radianceToTOA(imgRad) {
 
     var optical = Object.keys(ESUN).map(
         function(b) {
-            var esun = ee.Number(ESUN[b]);
-            return ee.Image(imgRad).select(b)
+            var esun  = ee.Number(ESUN[b]);
+            var dn    = ee.Image(imgRad).select(b);
+            var ganho = ee.Number(imgRad.get('GAIN_COEFFICIENT_' + b));
+            return dn.subtract(1).multiply(ganho)      // DN → radiância
                         .multiply(Math.PI)
                         .multiply(d.pow(2))
                         .divide(esun.multiply(cosz))
+                        .updateMask(dn.gt(0))
                         .rename(b)
                         .float();
         }
     );
 
+    var vnir = imgRad.select(['B01', 'B02', 'B3N']);
+    var naoSaturado = vnir.reduce(ee.Reducer.max()).lt(DN_SATURADO);
+
     return ee.Image(optical)
                 .addBands(imgRad.select(['B10','B11','B12','B13','B14']).float())
+                .updateMask(naoSaturado)
                 .copyProperties(imgRad, imgRad.propertyNames());
 }
 
@@ -227,7 +240,7 @@ function mascaraNuvemASTER(imgToa) {
     var visBright = green.add(red).add(nir).divide(3);
 
     // nuvens: brilhantes, frias, pouco vegetadas
-    var cloud = visBright.gt(0.25)
+    var cloud = visBright.gt(0.19)   // era 0.25 com TOA sem ganho (÷1,31)
         // .and(swir1.gt(0.15))
         // .and(ndvi.lt(0.4));
 
@@ -398,8 +411,9 @@ function addQualityASTER_v5_shadow_fix(img) {
   var tir_score = b10.unitScale(1050, 1300).clamp(0, 1);
 
   // Brilho: U-invertido — penaliza escuro (sombra) e brilhante (nuvem), premia moderado
-  var bright_up   = brightness.unitScale(0.07, 0.16).clamp(0, 1);
-  var bright_down = ee.Image(1).subtract(brightness.unitScale(0.22, 0.42).clamp(0, 1));
+  // limiares ÷1,31 em relação à versão com TOA sem ganho: (0.07, 0.16) e (0.22, 0.42)
+  var bright_up   = brightness.unitScale(0.053, 0.122).clamp(0, 1);
+  var bright_down = ee.Image(1).subtract(brightness.unitScale(0.168, 0.32).clamp(0, 1));
   var bright_score = bright_up.multiply(bright_down);
 
   // SAVI: vegetação densa → 1; solo/nuvem → menor pontuação
@@ -442,7 +456,8 @@ function converterPara16Bit(img) {
         'B07': 10000,
         'B08': 10000,
         'B09': 10000,
-        'B10': 10,      // Temperatura (0-400K -> 0-4000)
+        'B10': 10,      // TIR em DN (12 bits) -> ×10 ≈ 9.700–17.800 nas cenas testadas
+                        // (estoura o INT16 só se DN > 3276, ~350 K — improvável)
         'B11': 10,
         'B12': 10,
         'B13': 10,
@@ -456,7 +471,9 @@ function converterPara16Bit(img) {
     
     var bandas_16bit = bandas.map(function(b) {
         b = ee.String(b);
-        var fator = ee.Number(escala[b] || 10000);  // Default 10000
+        // b é ee.String (servidor): escala[b] no JS nunca casa e caía sempre
+        // no default 10000 (TIR estourava INT16 → 32767). Busca no servidor:
+        var fator = ee.Number(ee.Dictionary(escala).get(b, 10000));  // Default 10000
         
         var banda = img.select(b)
             .multiply(fator)
@@ -507,14 +524,19 @@ colecao_base = colecao_base
 
 
 
-// Imagens sem nuvens: CLOUDCOVER == 0 → não aplica máscara, mas adiciona SAVI/NDWI para homogeneidade
-var colecao_cc0 = colecao_base.filter(ee.Filter.inList('system:index', Cloudlist_clean))
+// Os dois ramos são complementares pela lista zero-cloud (e não pelo CLOUDCOVER):
+// antes, cena da lista com CLOUDCOVER ≥ 1 entrava duas vezes, e cena com
+// CLOUDCOVER = 0 fora da lista não entrava em nenhum ramo.
+var filtro_lista_limpa = ee.Filter.inList('system:index', Cloudlist_clean);
+
+// Cenas da lista zero-cloud → não aplica máscara, mas adiciona SAVI/NDWI para homogeneidade
+var colecao_cc0 = colecao_base.filter(filtro_lista_limpa)
                     .map(function(img) {
                         var base_qual = img.select('B01').gt(0).multiply(2.5);
                         return addIndicesASTER(img).addBands(base_qual.rename('quality'));
                     });
-// Imagens com nuvens: CLOUDCOVER >= 1 → aplica mascaraNuvemASTER (já adiciona NDVI)
-var colecao_cc_nuvens = colecao_base.filter(ee.Filter.gte(properti_CC, 1))
+// Demais cenas → aplica mascaraNuvemASTER (já adiciona SAVI/NDWI)
+var colecao_cc_nuvens = colecao_base.filter(filtro_lista_limpa.not())
                              .map(mascaraNuvemASTER)
                              .map(addQualityASTER_v5_shadow_fix);  // 👈 Nova função
                              
