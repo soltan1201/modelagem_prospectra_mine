@@ -1,0 +1,6 @@
+# Modelos treinados (joblib passam do limite de 100 MB do GitHub)
+*.joblib
+*.joblib.*
+
+# Tabelas de dados e registros (amostras, pontos, registros de tasks)
+*.csv

@@ -4,12 +4,14 @@ Mosaicos semestrais ASTER (Irecê, BA) — todos os semestres de uma vez.
 Versão Python (earthengine-api) de select_black_list_save_mosaicSem.js, com as
 correções já aplicadas:
   - DN → radiância com GAIN_COEFFICIENT_Bxx antes do TOA (VNIR/SWIR);
-  - pixel mascarado quando B01/B02/B3N saturam (DN ≥ 254);
-  - TIR segue em DN, exportado ×10 (escala por banda);
-  - exportação em INT32 (sem risco de estouro do teto 32767 do INT16);
-  - limiares de brilho reescalados para o TOA com ganho;
-  - ramos complementares: cena da lista zero-cloud → sem máscara, quality 2,5;
-    demais → máscara de nuvem/sombra + quality v5 (máximo 2,0).
+  - ESCALA ÚNICA (v4): reflectância TOA × 1000 (0–1000), mesma ordem de grandeza
+    do TIR, que segue em DN (12 bits); quality também × 1000. Todos os limiares
+    de brilho estão na escala × 1000. Export INT32 sem fator extra (fator 1);
+  - banda 'saturado' (0/1): algum de B01/B02/B3N com DN ≥ 254;
+  - ramos complementares:
+      cena da lista zero-cloud → INTACTA: só radiância/TOA e escala, nenhuma
+        máscara (nem nuvem/sombra, nem saturação), quality 5000 (sempre vence);
+      demais → máscara de saturação + nuvem/sombra, quality v5 × 1000 (máx. 2000).
 
 Listas lidas dos arquivos de rastreamento (mesma pasta deste script):
   lista_imagens_Notaceites.txt → cenas excluídas (blacklist)
@@ -18,20 +20,24 @@ Usa a união de todos os IDs de cada arquivo, ignorando o nome do bloco: o
 filtro de data de cada semestre já seleciona as cenas certas. Cena presente
 nas duas listas é excluída (a blacklist vence).
 
-Versão 3 — exportação por célula da grid 5 × 5 (GRID_ASSET):
+Versão 3/4 — exportação por célula da grid 5 × 5 (GRID_ASSET):
   um asset por ano × semestre × célula, nome
-  ASTER_QualityMosaic_{ano}_semestre_{sem}_{L<linha>C<coluna>}_v3, com as
+  ASTER_QualityMosaic_{ano}_semestre_{sem}_{L<linha>C<coluna>}_v4, com as
   propriedades celula_id / celula_nome. Cada célula usa só as cenas que a tocam
   e é recortada pela geometria da célula (grid com sobreposição de 100 m).
   Todas as células saem na MESMA grade de pixels (crs EPSG:4326 + CRS_TRANSFORM
   ancorado no canto NW do bloco), então encaixam pixel a pixel no mosaic().
 
-Conta e destino:
-  conta    → superconta (projeto mapbiomas-brazil); a conta ativa antes de
-             rodar é restaurada no fim
-  destino  → DESTINO (ImageCollection v3; todos os anos e células)
-Antes de exportar, o script lista o que já está salvo no destino, consulta as
-tasks da conta e mostra o plano para confirmação:
+Conta e destino (perguntado no início):
+  1) superconta              → DESTINOS['superconta'] (projeto mapbiomas-brazil)
+  2) rodízio caatinga01–05   → DESTINOS['caatinga'] (projeto mapbiomas-arida);
+                               troca de conta a cada TASKS_POR_CONTA tasks
+  3) uma conta caatinga só   → DESTINOS['caatinga']
+  No fim, a última conta usada continua ativa.
+No modo caatinga a superconta não é usada nem para leitura: o script consulta
+as tasks de caatinga01–05 e os assets do destino caatinga, para nunca exportar
+duas vezes o mesmo ano × semestre × célula nesse destino.
+Antes de exportar, o script mostra o plano para confirmação:
   novo         → exporta
   existe       → pula (ou apaga e refaz, se sobrescrever = sim)
   processando  → task READY/RUNNING na conta ou em TASKS_PROCESSANDO: nunca reenvia
@@ -65,17 +71,21 @@ from gee_tools import switch_user
 # ═══════════════════════════════════════════════════════════════════════════
 # PARÂMETROS
 # ═══════════════════════════════════════════════════════════════════════════
-CONTA_EXPORT = 'superconta'
-DESTINO      = 'projects/mapbiomas-brazil/assets/LAND-COVER/COLLECTION-11/GENERAL/SAMPLES/CAATINGA/ASTER_v3'
+CONTAS_CAATINGA = ['caatinga01', 'caatinga02', 'caatinga03', 'caatinga04', 'caatinga05']
+TASKS_POR_CONTA = 2          # rodízio caatinga: troca de conta a cada N tasks
+DESTINOS = {
+    'superconta': 'projects/mapbiomas-brazil/assets/LAND-COVER/COLLECTION-11/GENERAL/SAMPLES/CAATINGA/ASTER_v4',
+    'caatinga':   'projects/mapbiomas-arida/mosaic_aster_v4',
+}
 GRID_ASSET   = 'projects/mapbiomas-arida/mine/grid_irece_5x5_solape100'
-VERSAO       = 'v3'
+VERSAO       = 'v4'
 ARQ_CONTA_ATUAL = Path.home() / '.config' / 'earthengine' / 'current_user.txt'
 
 # Tasks ainda em execução no GEE que NÃO devem ser reenviadas. O script também
 # consulta sozinho as tasks READY/RUNNING da conta; esta lista é um reforço
 # manual (ex.: tasks iniciadas por outra conta). Limpe quando terminarem.
 TASKS_PROCESSANDO: list[str] = [
-    # ex.: 'ASTER_QualityMosaic_2004_semestre_2_L3C2_v3',
+    # ex.: 'ASTER_QualityMosaic_2004_semestre_2_L3C2_v4',
 ]
 
 LIST_COORD = [
@@ -85,19 +95,22 @@ LIST_COORD = [
     [-44.460483519818084, -9.416525285369607],
     [-44.460483519818084, -14.790793773956535],
 ]
-CC_MAX       = 70          # filtro de metadado CLOUDCOVER < 70
+CC_MAX       = 77          # filtro de metadado CLOUDCOVER < 77
 
-# Nuvem / sombra (limiares de brilho já reescalados para TOA com ganho)
-LIM_VIS_BRIGHT       = 0.19   # era 0.25 com TOA sem ganho (÷1,31)
+# Escala da reflectância TOA (B01–B09): 0–1 → 0–1000
+ESCALA_TOA           = 1000
+
+# Nuvem / sombra — limiares na escala × 1000 (TOA com ganho)
+LIM_VIS_BRIGHT       = 190    # 0,19 × 1000 (era 0,25 com TOA sem ganho)
 RAIO_BORDA_NUVEM     = 180    # m
 ALTURA_NUVEM         = 2000   # m
-LIM_ESCURO_GREEN     = 0.12   # era 0.18 (÷1,49)
-LIM_ESCURO_NIR       = 0.17   # era 0.20 (÷1,17)
+LIM_ESCURO_GREEN     = 120    # 0,12 × 1000
+LIM_ESCURO_NIR       = 170    # 0,17 × 1000
 DN_SATURADO          = 254    # VNIR 8 bits: DN ≥ 254 = saturado
 
-# Quality
-QUALITY_ZERO_CLOUD   = 2.5    # cenas da lista zero-cloud (sempre vencem)
-QUALITY_MAX_DEMAIS   = 2.0    # teto do quality v5
+# Quality (escala × 1000)
+QUALITY_ZERO_CLOUD   = 5000   # cenas da lista zero-cloud (sempre vencem)
+QUALITY_MAX_DEMAIS   = 2000   # teto do quality v5 (2,0 × 1000)
 
 ESUN = {'B01': 1848, 'B02': 1549, 'B3N': 1114,
         'B04': 225.4, 'B05': 86.63, 'B06': 81.85,
@@ -106,10 +119,16 @@ TIR = ['B10', 'B11', 'B12', 'B13', 'B14']
 
 # Exportação INT32 (valores = físico × fator)
 BANDAS_EXPORT = ['B01', 'B02', 'B3N', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09',
-                 'B10', 'B11', 'B12', 'B13', 'B14', 'quality']
-ESCALA_EXPORT_FATOR = {**dict.fromkeys(list(ESUN), 10000),   # reflectância 0–1 → 0–10000
-                **dict.fromkeys(TIR, 10),              # TIR em DN (12 bits) → ×10
-                'quality': 10000}                      # 0–2,5 → 0–25000
+                 'B10', 'B11', 'B12', 'B13', 'B14', 'quality', 'saturado']
+# Fator aplicado no export (valor no asset = valor no pipeline × fator). Tudo já
+# está na escala final: reflectância × 1000, TIR em DN, quality × 1000.
+ESCALA_EXPORT_FATOR = {**dict.fromkeys(list(ESUN), 1),
+                       **dict.fromkeys(TIR, 1),
+                       'quality': 1, 'saturado': 1}
+# Valor no asset = valor físico × ESCALA_FISICA (gravado em SCALE_FACTORS):
+# reflectância = valor / 1000; TIR = DN; quality = valor / 1000
+ESCALA_FISICA = {**dict.fromkeys(list(ESUN), ESCALA_TOA), **dict.fromkeys(TIR, 1),
+                 'quality': 1000, 'saturado': 1}
 ESCALA_EXPORT = 15   # m (resolução VNIR)
 
 # Grade de pixels comum a todas as células: EPSG:4326, pixel de 15 m em graus
@@ -120,7 +139,7 @@ RES_GRAUS      = ESCALA_EXPORT / 111319.49079327357
 OESTE_BLOCO    = min(x for x, _ in LIST_COORD)
 NORTE_BLOCO    = max(y for _, y in LIST_COORD)
 CRS_TRANSFORM  = [RES_GRAUS, 0, OESTE_BLOCO, 0, -RES_GRAUS, NORTE_BLOCO]
-LIMITE_TASKS_PADRAO = 100
+LIMITE_TASKS_PADRAO = 1050   # 25 células × 42 semestres: sem corte por padrão
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -141,8 +160,10 @@ def ids_do_semestre(ids: set[str], ano: int, semestre: int) -> ee.List:
 # ═══════════════════════════════════════════════════════════════════════════
 # FUNÇÕES DE PROCESSAMENTO (port de select_black_list_save_mosaicSem.js)
 # ═══════════════════════════════════════════════════════════════════════════
-def radiance_to_toa(img):
-    """DN → radiância [(DN − 1) × ganho] → reflectância TOA (VNIR/SWIR); TIR segue em DN."""
+def radiance_to_toa(img, mascarar_saturacao: bool = True):
+    """DN → radiância [(DN − 1) × ganho] → reflectância TOA × 1000 (VNIR/SWIR); TIR
+    segue em DN. Adiciona a banda 'saturado' (0/1). mascarar_saturacao=False deixa
+    os pixels saturados (cenas zero-cloud ficam intactas)."""
     img = ee.Image(img)
     cosz = ee.Number(90).subtract(ee.Number(img.get('SOLAR_ELEVATION'))) \
                         .multiply(math.pi / 180).cos()
@@ -160,6 +181,7 @@ def radiance_to_toa(img):
         return (dn.subtract(1).multiply(ganho)
                   .multiply(math.pi).multiply(d.pow(2))
                   .divide(cosz.multiply(esun))
+                  .multiply(ESCALA_TOA)
                   .updateMask(dn.gt(0))
                   .rename(b).toFloat())
 
@@ -171,20 +193,21 @@ def radiance_to_toa(img):
             vazia = ee.Image.constant(0).toFloat().updateMask(0).rename(b)
             opticas.append(ee.Image(ee.Algorithms.If(tem_swir, toa(b, esun), vazia)))
 
-    nao_saturado = img.select(['B01', 'B02', 'B3N']).reduce(ee.Reducer.max()).lt(DN_SATURADO)
+    saturado = (img.select(['B01', 'B02', 'B3N']).reduce(ee.Reducer.max())
+                   .gte(DN_SATURADO).rename('saturado'))
+    saida = ee.Image.cat(opticas).addBands(img.select(TIR).toFloat()).addBands(saturado)
+    if mascarar_saturacao:
+        saida = saida.updateMask(saturado.Not())
     # copyProperties devolve Element no Python: ee.Image(...) devolve o tipo certo
-    return ee.Image(ee.Image.cat(opticas)
-              .addBands(img.select(TIR).toFloat())
-              .updateMask(nao_saturado)
-              .copyProperties(img, img.propertyNames())
-              .set('TEM_SWIR', tem_swir))
+    return ee.Image(saida.copyProperties(img, img.propertyNames())
+                         .set('TEM_SWIR', tem_swir))
 
 
 def add_indices(img):
-    """SAVI e NDWI (McFeeters) a partir do TOA."""
+    """SAVI e NDWI (McFeeters) a partir do TOA × 1000 (L = 0,5 × 1000)."""
     img = ee.Image(img)
     green, red, nir = img.select('B01'), img.select('B02'), img.select('B3N')
-    savi = nir.subtract(red).multiply(1.5).divide(nir.add(red).add(0.5)).rename('SAVI')
+    savi = nir.subtract(red).multiply(1.5).divide(nir.add(red).add(0.5 * ESCALA_TOA)).rename('SAVI')
     ndwi = green.subtract(nir).divide(green.add(nir).add(1e-6)).rename('NDWI')
     return img.addBands([savi, ndwi])
 
@@ -221,17 +244,17 @@ def mascara_nuvem(img):
 
 
 def add_quality_v5(img):
-    """Quality v5 (VNIR + TIR), teto QUALITY_MAX_DEMAIS."""
+    """Quality v5 (VNIR + TIR) calculado em 0–2 e escalado × 1000 (teto QUALITY_MAX_DEMAIS)."""
     img = ee.Image(img)
     b1, b2, b3n, b10 = img.select('B01'), img.select('B02'), img.select('B3N'), img.select('B10')
 
-    savi = b3n.subtract(b2).multiply(1.5).divide(b3n.add(b2).add(0.5).add(1e-6))
+    savi = b3n.subtract(b2).multiply(1.5).divide(b3n.add(b2).add(0.5 * ESCALA_TOA).add(1e-6))
     ndwi = b1.subtract(b3n).divide(b1.add(b3n).add(1e-6))
     brightness = b1.add(b2).add(b3n).divide(3)
 
     tir_score = b10.unitScale(1050, 1300).clamp(0, 1)          # TIR em DN
-    bright_up = brightness.unitScale(0.053, 0.122).clamp(0, 1)  # era (0.07, 0.16)
-    bright_down = ee.Image(1).subtract(brightness.unitScale(0.168, 0.32).clamp(0, 1))  # era (0.22, 0.42)
+    bright_up = brightness.unitScale(53, 122).clamp(0, 1)        # 0,053–0,122 × 1000
+    bright_down = ee.Image(1).subtract(brightness.unitScale(168, 320).clamp(0, 1))  # 0,168–0,32 × 1000
     bright_score = bright_up.multiply(bright_down)
     savi_score = savi.unitScale(-0.1, 0.5).clamp(0, 1)
     ndwi_score = ndwi.multiply(-1).unitScale(-0.10, 0.45).clamp(0, 1)
@@ -242,16 +265,18 @@ def add_quality_v5(img):
     cc = ee.Number(img.get('CLOUDCOVER'))
     cloud_bonus = ee.Number(1).subtract(cc.divide(80).min(1)).multiply(0.8)
     perfect_bonus = cc.eq(0).multiply(0.3)
-    quality = base.add(cloud_bonus).add(perfect_bonus).clamp(0, QUALITY_MAX_DEMAIS)
+    quality = (base.add(cloud_bonus).add(perfect_bonus).multiply(1000)
+                   .clamp(0, QUALITY_MAX_DEMAIS))
 
-    quality = quality.updateMask(b1.mask().And(brightness.gt(0.005)))
+    quality = quality.updateMask(b1.mask().And(brightness.gt(0.005 * ESCALA_TOA)))
     return img.addBands(quality.rename('quality'))
 
 
 def add_quality_zero_cloud(img):
-    """Cena sem nuvem: sem máscara, quality fixo (sempre vence no qualityMosaic)."""
+    """Cena inspecionada sem nuvem: nenhuma máscara, quality fixo (sempre vence no qualityMosaic)."""
     img = ee.Image(img)
-    quality = img.select('B01').gt(0).multiply(QUALITY_ZERO_CLOUD).rename('quality')
+    quality = (ee.Image.constant(QUALITY_ZERO_CLOUD).toFloat()
+                 .updateMask(img.select('B01').mask()).rename('quality'))
     return add_indices(img).addBands(quality)
 
 
@@ -261,7 +286,8 @@ def para_int32(img):
               for b in BANDAS_EXPORT]
     return ee.Image(ee.Image.cat(bandas)
               .copyProperties(img, img.propertyNames())
-              .set({'SCALE_FACTORS': ESCALA_EXPORT_FATOR, 'DATA_TYPE': 'INT32'}))
+              # SCALE_FACTORS mantém o significado de antes: valor no asset = físico × fator
+              .set({'SCALE_FACTORS': ESCALA_FISICA, 'DATA_TYPE': 'INT32'}))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -280,20 +306,22 @@ def montar_semestre(ano: int, semestre: int, area, blacklist: ee.List, zero_clou
     filtrada = diurnas.filter(ee.Filter.inList('system:index', blacklist).Not())
 
     na_lista = ee.Filter.inList('system:index', zero_cloud)
-    cc0 = filtrada.filter(na_lista).map(radiance_to_toa).map(add_quality_zero_cloud)
+    cc0 = (filtrada.filter(na_lista)
+             .map(lambda i: radiance_to_toa(i, mascarar_saturacao=False))
+             .map(add_quality_zero_cloud))
     nuvens = (filtrada.filter(na_lista.Not())
                 .map(radiance_to_toa).map(mascara_nuvem).map(add_quality_v5))
 
     colecao = cc0.merge(nuvens)
     mosaico = colecao.qualityMosaic('quality').clip(area)
-    mosaico = mosaico.updateMask(mosaico.select('B01').gt(0))
+    mosaico = mosaico.updateMask(mosaico.select('B01').mask())
     mosaico = ee.Image(para_int32(mosaico).set({
         'year': ano, 'semestre': str(semestre), 'bloco': 'Irece',
         'num_images': colecao.size(),
         'num_zero_cloud': cc0.size(),
-        'versao': VERSAO, 'processamento': 'ganho+saturacao+escala_por_banda+int32',
+        'versao': VERSAO, 'processamento': 'ganho+toa_x1000+tir_dn+saturado_banda+int32',
     }))
-    contagens = {'total_cc_lt_70': base.size(), 'diurnas': diurnas.size(),
+    contagens = {'total_cc_lt_max': base.size(), 'diurnas': diurnas.size(),
                  'apos_blacklist': filtrada.size(),
                  'zero_cloud': cc0.size(), 'com_mascara': nuvens.size()}
     return mosaico, contagens
@@ -311,7 +339,7 @@ def ler_grid() -> dict[int, dict]:
     try:
         info = ee.FeatureCollection(GRID_ASSET).getInfo()
     except ee.EEException as e:
-        raise SystemExit(f'Não foi possível ler a grid {GRID_ASSET} com {CONTA_EXPORT}: {e}\n'
+        raise SystemExit(f'Não foi possível ler a grid {GRID_ASSET}: {e}\n'
                          'Compartilhe o asset com a conta ou copie a grid para o projeto dela.')
     grid = {int(f['properties']['id']): {'nome': f['properties']['nome'],
                                           'geom': ee.Geometry(f['geometry'], None, False)}
@@ -328,29 +356,36 @@ def usar_conta(nome: str) -> None:
     log.info(f'Earth Engine inicializado com {nome} (projeto {projeto}).')
 
 
-def listar_destino() -> dict[str, dict]:
-    """Assets já salvos no destino: {nome: info do listAssets}. Cria a coleção se faltar."""
+def destino_da_conta(conta: str) -> str:
+    return DESTINOS['superconta'] if conta == 'superconta' else DESTINOS['caatinga']
+
+
+def listar_destino(destino: str, criar: bool) -> dict[str, dict]:
+    """Assets já salvos em `destino`: {nome: info}. Cria a coleção se faltar e `criar`."""
     try:
-        info = ee.data.getAsset(DESTINO)
-        log.info(f'Destino {DESTINO} existe (tipo {info["type"]}).')
+        info = ee.data.getAsset(destino)
+        log.info(f'Destino {destino} existe (tipo {info["type"]}).')
     except ee.EEException:
-        log.info(f'Destino {DESTINO} não existe — criando ImageCollection.')
-        ee.data.createAsset({'type': 'IMAGE_COLLECTION'}, DESTINO)
+        if criar:
+            log.info(f'Destino {destino} não existe — criando ImageCollection.')
+            ee.data.createAsset({'type': 'IMAGE_COLLECTION'}, destino)
+        else:
+            log.info(f'Destino {destino} não existe (ou sem acesso) — nada salvo lá.')
         return {}
     existentes, token = {}, None
     while True:
-        params = {'parent': DESTINO, **({'pageToken': token} if token else {})}
+        params = {'parent': destino, **({'pageToken': token} if token else {})}
         resp = ee.data.listAssets(params)
         for a in resp.get('assets', []):
-            existentes[a['id'].rsplit('/', 1)[-1]] = a
+            existentes[a['id'].rsplit('/', 1)[-1]] = {**a, 'destino': destino}
         token = resp.get('nextPageToken')
         if not token:
             return existentes
 
 
-def estado_tasks() -> dict[str, dict]:
-    """Última task de cada descrição ASTER_QualityMosaic_*_v3 na conta (getTaskList vem
-    da mais recente para a mais antiga)."""
+def tasks_da_conta() -> dict[str, dict]:
+    """Última task de cada descrição ASTER_QualityMosaic_*_<VERSAO> na conta ativa
+    (getTaskList vem da mais recente para a mais antiga)."""
     estados = {}
     for t in ee.data.getTaskList():
         desc = t.get('description', '')
@@ -360,13 +395,44 @@ def estado_tasks() -> dict[str, dict]:
     return estados
 
 
+def estado_geral(contas_export: list[str]) -> tuple[dict, dict]:
+    """Assets salvos no destino e tasks das contas do mesmo grupo, para não duplicar
+    exportações entre contas: modo superconta → só a superconta; modos caatinga →
+    só caatinga01–05 (a superconta nunca é usada). Termina na primeira conta de
+    exportação, com o destino dela criado se faltar."""
+    existentes, tasks = {}, {}
+    todas = ['superconta'] if contas_export == ['superconta'] else list(CONTAS_CAATINGA)
+    # lê na ordem do rodízio (01, 02, … 05); o destino é lido e, se faltar, criado
+    # pela primeira conta
+    destinos_lidos = set()
+    for conta in todas:
+        try:
+            usar_conta(conta)
+        except Exception as e:
+            log.warning(f'{conta}: não foi possível inicializar ({str(e)[:80]}) — tasks ignoradas.')
+            continue
+        for desc, t in tasks_da_conta().items():
+            t = {**t, 'conta': conta}
+            # entre contas, fica a task mais recente da descrição
+            if desc not in tasks or t.get('creation_timestamp_ms', 0) > tasks[desc].get('creation_timestamp_ms', 0):
+                tasks[desc] = t
+        destino = destino_da_conta(conta)
+        if destino not in destinos_lidos:
+            existentes.update(listar_destino(destino, criar=True))
+            destinos_lidos.add(destino)
+    # a exportação começa pela primeira conta do rodízio
+    if ARQ_CONTA_ATUAL.read_text().strip() != contas_export[0]:
+        usar_conta(contas_export[0])
+    return existentes, tasks
+
+
 def planejar(args, grid: dict[int, dict], existentes: dict[str, dict],
              tasks: dict[str, dict]) -> dict[tuple, str]:
     """Classifica cada ano × semestre × célula: existe / processando / novo / refazer.
     Mostra o resumo por semestre."""
     ativas = {d for d, t in tasks.items() if t['state'] in ('READY', 'RUNNING')} | set(TASKS_PROCESSANDO)
 
-    print(f'\n══════ Destino: {DESTINO} ══════')
+    print(f'\n══════ Destino: {args.destino} ══════')
     print(f'{len(existentes)} asset(s) já salvo(s); {len(ativas)} task(s) em processamento; '
           f'células pedidas: {len(args.celulas)}.')
 
@@ -392,7 +458,7 @@ def planejar(args, grid: dict[int, dict], existentes: dict[str, dict],
     total = {r: sum(c == k for c in plano.values()) for k, r in rotulos.items()}
     print('  TOTAL: ' + ', '.join(f'{n} {r}' for r, n in total.items() if n))
 
-    falhas = [(n, t.get('error_message', '')) for n, t in tasks.items()
+    falhas = [(f"{n} [{t.get('conta')}]", t.get('error_message', '')) for n, t in tasks.items()
               if t['state'] == 'FAILED' and n not in existentes and n not in ativas]
     if falhas:
         print(f'  última task FALHOU em {len(falhas)} item(ns) (reenviados se pedidos):')
@@ -462,7 +528,7 @@ def perguntar_celulas(grid: dict[int, dict]) -> list[int]:
 
 
 def coletar_opcoes(grid: dict[int, dict]) -> SimpleNamespace:
-    print('\n══════ Mosaicos semestrais ASTER v3 (por célula) — configuração ══════')
+    print(f'\n══════ Mosaicos semestrais ASTER {VERSAO} (por célula) — configuração ══════')
     ano_ini = perguntar_int('Ano inicial', 2000, 2000, 2021)
     ano_fim = perguntar_int('Ano final', max(ano_ini, 2020), ano_ini, 2021)
 
@@ -493,30 +559,42 @@ def coletar_opcoes(grid: dict[int, dict]) -> SimpleNamespace:
                            sobrescrever=sobrescrever, dry_run=dry_run, limite=limite)
 
 
+def perguntar_contas() -> list[str]:
+    """Contas de exportação, na ordem do rodízio."""
+    modo = perguntar_opcao('Conta para exportar:', [
+        (f'superconta → {DESTINOS["superconta"]}', 'super'),
+        (f'rodízio {CONTAS_CAATINGA[0]}–{CONTAS_CAATINGA[-1]} (troca a cada '
+         f'{TASKS_POR_CONTA} tasks) → {DESTINOS["caatinga"]}', 'rodizio'),
+        (f'uma conta caatinga só → {DESTINOS["caatinga"]}', 'uma'),
+    ])
+    if modo == 'super':
+        return ['superconta']
+    if modo == 'rodizio':
+        return list(CONTAS_CAATINGA)
+    return [perguntar_opcao('Qual conta?', [(c, c) for c in CONTAS_CAATINGA])]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # EXECUÇÃO
 # ═══════════════════════════════════════════════════════════════════════════
 def main():
-    conta_original = ARQ_CONTA_ATUAL.read_text().strip()
-    try:
-        usar_conta(CONTA_EXPORT)
-        grid = ler_grid()
-        args = coletar_opcoes(grid)
-        existentes = listar_destino()
-        plano = planejar(args, grid, existentes, estado_tasks())
-        print(f'\nModo: {"dry-run (só contagens)" if args.dry_run else "EXPORTAR"} | '
-              f'conta: {CONTA_EXPORT} | sobrescrever={args.sobrescrever}'
-              + ('' if args.dry_run else f' | limite de tasks={args.limite}'))
-        if not perguntar_sim_nao('Continuar?', padrao=True):
-            raise SystemExit('Cancelado.')
-        executar(args, grid, plano)
-    finally:
-        if conta_original != CONTA_EXPORT:
-            log.info(f'Voltando para a conta original: {conta_original}')
-            switch_user(conta_original)
+    # a conta usada por último fica ativa no fim (não volta à conta anterior)
+    contas = perguntar_contas()
+    existentes, tasks = estado_geral(contas)
+    grid = ler_grid()
+    args = coletar_opcoes(grid)
+    args.contas = contas
+    args.destino = destino_da_conta(contas[0])
+    plano = planejar(args, grid, existentes, tasks)
+    print(f'\nModo: {"dry-run (só contagens)" if args.dry_run else "EXPORTAR"} | '
+          f'contas: {", ".join(contas)} | sobrescrever={args.sobrescrever}'
+          + ('' if args.dry_run else f' | limite de tasks={args.limite}'))
+    if not perguntar_sim_nao('Continuar?', padrao=True):
+        raise SystemExit('Cancelado.')
+    executar(args, grid, plano, existentes)
 
 
-def executar(args, grid: dict[int, dict], plano: dict[tuple, str]):
+def executar(args, grid: dict[int, dict], plano: dict[tuple, str], existentes: dict[str, dict]):
     ids_blacklist = ler_ids('lista_imagens_Notaceites.txt')
     ids_zero = ler_ids('list_zero_cloud.txt')
     conflito = ids_blacklist & ids_zero
@@ -527,8 +605,16 @@ def executar(args, grid: dict[int, dict], plano: dict[tuple, str]):
 
     def base_registro(ano, sem, cid):
         nome = nome_mosaico(ano, sem, grid[cid]['nome'])
+        # item já salvo fica onde está; item novo vai para o destino da conta escolhida
+        destino = existentes.get(nome, {}).get('destino', args.destino)
         return {'ano': ano, 'semestre': sem, 'celula_id': cid, 'celula_nome': grid[cid]['nome'],
-                'asset': f'{DESTINO}/{nome}'}
+                'asset': f'{destino}/{nome}'}
+
+    # rodízio: conta i atende as tasks [i·N, (i+1)·N) e volta ao começo da lista
+    conta_ativa = args.contas[0]
+
+    def conta_para(n_disparadas: int) -> str:
+        return args.contas[(n_disparadas // TASKS_POR_CONTA) % len(args.contas)]
 
     registro = []
     for (ano, sem, cid), cat in plano.items():
@@ -567,6 +653,13 @@ def executar(args, grid: dict[int, dict], plano: dict[tuple, str]):
                 registro.append({**linha, 'status': 'adiado (limite de tasks)'})
                 continue
 
+            conta = conta_para(disparadas)
+            if conta != conta_ativa:
+                usar_conta(conta)
+                conta_ativa = conta
+            if cat == 'novo':
+                linha['asset'] = f'{destino_da_conta(conta)}/{nome}'
+
             mosaico = ee.Image(mosaico.set({'celula_id': cid, 'celula_nome': grid[cid]['nome'],
                                             'grid_asset': GRID_ASSET}))
             # Monta a task antes de apagar: se a montagem falhar, o asset antigo fica intacto
@@ -577,17 +670,21 @@ def executar(args, grid: dict[int, dict], plano: dict[tuple, str]):
             if cat == 'refazer':
                 log.warning(f'Apagando {linha["asset"]} (sobrescrever = sim).')
                 ee.data.deleteAsset(linha['asset'])
-            task.start()
+            try:
+                task.start()
+            except ee.EEException as e:
+                log.error(f'  {conta}: falhou ao iniciar {nome}: {e}')
+                registro.append({**linha, 'status': f'erro_inicio: {str(e)[:80]}', 'conta': conta})
+                continue
             disparadas += 1
-            log.info(f'  task {task.id} iniciada ({disparadas}/{args.limite}) → {nome}')
-            registro.append({**linha, 'status': 'exportando', 'task_id': task.id,
-                             'conta': CONTA_EXPORT})
+            log.info(f'  task {task.id} iniciada por {conta} ({disparadas}/{args.limite}) → {nome}')
+            registro.append({**linha, 'status': 'exportando', 'task_id': task.id, 'conta': conta})
 
     if not args.dry_run and disparadas >= args.limite:
         log.warning(f'Limite de {args.limite} tasks atingido — rode de novo para o restante.')
 
     saida = PASTA / f'registro_mosaicos_{VERSAO}_{datetime.now():%Y%m%d_%H%M}.csv'
-    campos = ['ano', 'semestre', 'celula_id', 'celula_nome', 'status', 'total_cc_lt_70',
+    campos = ['ano', 'semestre', 'celula_id', 'celula_nome', 'status', 'total_cc_lt_max',
               'diurnas', 'apos_blacklist', 'zero_cloud', 'com_mascara', 'asset', 'conta', 'task_id']
     with open(saida, 'w', newline='') as f:
         escritor = csv.DictWriter(f, fieldnames=campos, extrasaction='ignore')
