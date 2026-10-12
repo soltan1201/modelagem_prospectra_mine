@@ -237,9 +237,18 @@ Nome: `ASTER_MOSAIC_<grupo>_2009_2020_<LxCy>`. Bandas B01–B14, com B04–B09
 estimadas (`swir = 'estimado_rf'`). Por que os dois grupos na mesma coleção:
 comparar, célula a célula, o mosaico só de cenas limpas com o mosaico de maior
 cobertura (com nuvem filtrada por quality), com o mesmo modelo de SWIR.
-Ressalva: produz, mas não resolve, o problema de transferência da seção 4 —
-pela seção 4.1, espera-se SWIR superestimado nas células/períodos de cenas
-quentes. Rodar primeiro em dry-run (confere entradas e a leitura dos pontos pela
+**Normalização (v2, `swir_rf_v2_norm`):** antes do RF, o VNIR/TIR de 2009–2020
+passa pela reta OLS por cena da seção 4.3 (ganho e offset por banda, escolhidos
+pela banda `data` com `remap`; cena com < 200 pares usa a reta global). Retas em
+`models/zero_cloud/normalizacao_ols_cena_coef.csv` (23 de 34 cenas com reta
+própria). `NORMALIZACAO = {'zero_cloud': 'cena', 'semestral_v4': 'nenhuma'}` —
+os semestrais v4 não têm a banda `data`. A saída guarda VNIR/TIR **medidos** e o
+SWIR estimado, mais a banda `normalizacao` (0 nenhuma, 1 global, 2 cena).
+Teste em L3C3: mediana B04 251 → 230, B08 101 → 85; 36% dos pixels com reta da
+cena, 64% com a global.
+
+Ressalvas: a reta global tem ganho baixo (B14 0,31, B3N 0,40) e achata o que cai
+nela; o grupo `semestral_v4` continua sem normalização, com o viés da seção 4.1. Rodar primeiro em dry-run (confere entradas e a leitura dos pontos pela
 superconta) e só então exportar.
 
 ### 6.2 Mosaico final para inferência (`building_dataset/build_mosaico_final.py`)

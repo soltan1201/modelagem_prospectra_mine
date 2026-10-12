@@ -15,11 +15,25 @@ Treino
   TREINO = 'global' → todos os pontos; 'celula' → só os pontos da célula (se
   tiver ≥ MIN_PONTOS_CELULA; senão cai no global).
 
+Normalização radiométrica 2009–2020 → 2000–2008 (train_swir_models.ipynb, seção 10)
+  Antes do RF, cada banda VNIR/TIR do mosaico 2009–2020 é levada à escala de
+  2000–2008: valor_norm = offset + ganho × valor. Ganho e offset por banda vêm de
+  uma reta de mínimos quadrados (OLS) nos pontos pareados (CSV_PAREADOS),
+  ajustada POR CENA (data AAAAMMDD da cena 2009–2020 que deu o pixel). Cena com
+  menos de MIN_PONTOS_CENA pares usa a reta global. No notebook (validação uma
+  célula de fora) o R² do SWIR estimado no teste temporal foi de −0,44 para
+  +0,49, mantendo 74–85% do desvio padrão das bandas.
+  NORMALIZACAO por grupo: 'cena' precisa da banda 'data' (zero-cloud tem);
+  os semestrais v4 não têm → 'nenhuma' (ou 'global', que achata a imagem).
+  O RF recebe as bandas normalizadas; a saída guarda VNIR/TIR MEDIDOS (sem
+  normalização) e o SWIR estimado.
+
 Saída (ImageCollection DESTINO, conta superconta)
   ASTER_MOSAIC_<grupo>_2009_2020_<LxCy>, ex.: ASTER_MOSAIC_zero_cloud_2009_2020_L3C3
   Bandas: B01, B02, B3N (medidas), B04–B09 (ESTIMADAS), B10–B14 (medidas) —
-  INT32, reflectância × 1000, TIR em DN. Pixels saturados (VNIR DN ≥ 254; nas
-  cenas zero-cloud eram nuvem) ficam mascarados.
+  INT32, reflectância × 1000, TIR em DN; banda 'normalizacao' (UINT8: 0 nenhuma,
+  1 reta global, 2 reta da cena). Pixels saturados (VNIR DN ≥ 254; nas cenas
+  zero-cloud eram nuvem) ficam mascarados.
   Propriedades: grupo, periodo, celula_id, celula_nome, origem, swir
   ('estimado_rf'), treino, n_pontos_treino, rf_params, SCALE_FACTORS…
 
@@ -28,9 +42,8 @@ RF ≡ smileRandomForest), lidos de models/zero_cloud/best_params.json
 (chave rf.<banda>.gee) se existir; senão RF_PARAMS abaixo (o resultado da
 última execução do notebook — iguais para as 6 bandas).
 
-ATENÇÃO: no teste temporal (train_swir_models.ipynb, seção 8) os modelos
-treinados em 2000–2008 tiveram R² negativo ao receber VNIR + TIR de 2009–2020 —
-o TIR em DN carrega a temperatura da data da cena. Ver modeling/README.md.
+Sem normalização, o teste temporal (seção 8) deu R² negativo: o TIR em DN
+carrega a temperatura da data da cena. Ver modeling/README.md, seções 4.2–4.3.
 
 Uso: python estimar_swir_rf.py
 """
@@ -43,6 +56,8 @@ from datetime import datetime
 from pathlib import Path
 
 import ee
+import numpy as np
+import pandas as pd
 
 PASTA_BUILD = Path(__file__).resolve().parents[1] / 'building_dataset'
 sys.path.append(str(PASTA_BUILD))
@@ -64,7 +79,7 @@ PERIODO   = '2009_2020'
 ANOS      = (2009, 2020)
 GRUPOS    = ['zero_cloud', 'semestral_v4']
 PREFIXO   = 'ASTER_MOSAIC_'
-VERSAO    = 'swir_rf_v1'
+VERSAO    = 'swir_rf_v2_norm'
 
 VNIR     = ['B01', 'B02', 'B3N']
 SWIR     = ['B04', 'B05', 'B06', 'B07', 'B08', 'B09']
@@ -78,6 +93,14 @@ MIN_PONTOS_CELULA = 500
 RF_PARAMS = {'numberOfTrees': 108, 'variablesPerSplit': 5, 'minLeafPopulation': 2,
              'bagFraction': 0.983, 'maxNodes': None, 'seed': 42}
 ARQ_PARAMS = Path(__file__).resolve().parent / 'models' / 'zero_cloud' / 'best_params.json'
+
+# normalização 2009–2020 → 2000–2008 (seção 10 do notebook)
+CSV_PAREADOS    = (Path(__file__).resolve().parents[1] / 'Dados' / 'ASTER_Samples_0cloud'
+                   / 'pareados' / 'points_zeroCC_pareados.csv')
+ARQ_COEFS       = Path(__file__).resolve().parent / 'models' / 'zero_cloud' / 'normalizacao_ols_cena_coef.csv'
+NORMALIZACAO    = {'zero_cloud': 'cena', 'semestral_v4': 'nenhuma'}   # 'cena', 'global' ou 'nenhuma'
+MIN_PONTOS_CENA = 200
+CODIGO_NORM     = {'nenhuma': 0, 'global': 1, 'cena': 2}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -122,6 +145,55 @@ def params_por_banda() -> dict[str, dict]:
     return {s: RF_PARAMS for s in SWIR}
 
 
+def coeficientes() -> dict:
+    """OLS por banda (2009–2020 → 2000–2008) nos pontos pareados: global e por cena.
+
+    {'global': {banda: (offset, ganho)}, 'cenas': {data: {banda: (offset, ganho)}}},
+    nas unidades do mosaico (reflectância × 1000, TIR em DN). Grava ARQ_COEFS.
+    """
+    if not CSV_PAREADOS.exists():
+        raise SystemExit(f'{CSV_PAREADOS} não existe — rode building_dataset/baixar_pontos_pareados.py')
+    df = pd.read_csv(CSV_PAREADOS).dropna(subset=[f'{x}_{p}' for x in FEATURES for p in ('00_08', '09_20')])
+
+    def reta(d):
+        return {x: tuple(np.polyfit(d[f'{x}_09_20'], d[f'{x}_00_08'], 1)[::-1]) for x in FEATURES}
+
+    coefs = {'global': reta(df), 'cenas': {}}
+    for data, d in df.groupby('data_09_20'):
+        if len(d) >= MIN_PONTOS_CENA:
+            coefs['cenas'][int(data)] = reta(d)
+    linhas = [{'data': k, 'n_pontos': int((df['data_09_20'] == k).sum()) if k != 'global' else len(df),
+               **{f'{x}_{c}': v[x][i] for x in FEATURES for i, c in enumerate(('offset', 'ganho'))}}
+              for k, v in [('global', coefs['global']), *coefs['cenas'].items()]]
+    ARQ_COEFS.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(linhas).to_csv(ARQ_COEFS, index=False)
+    n_cenas = df['data_09_20'].nunique()
+    log.info(f'Normalização OLS: {len(coefs["cenas"])} de {n_cenas} cenas com reta própria '
+             f'(≥ {MIN_PONTOS_CENA} pares); demais usam a global → {ARQ_COEFS.name}')
+    return coefs
+
+
+def normalizar(img, coefs: dict, modo: str):
+    """(features VNIR+TIR normalizadas, banda 'normalizacao')."""
+    feats = img.select(FEATURES).toFloat()
+    if modo == 'nenhuma':
+        return feats, ee.Image.constant(0).toUint8().rename('normalizacao')
+    glob = coefs['global']
+    if modo == 'global':
+        partes = [feats.select(x).multiply(glob[x][1]).add(glob[x][0]).rename(x) for x in FEATURES]
+        return ee.Image.cat(partes), ee.Image.constant(1).toUint8().rename('normalizacao')
+    # por cena: ganho/offset escolhidos pela banda 'data' (remap; cena sem reta → global)
+    datas = sorted(coefs['cenas'])
+    data = img.select('data').toInt32()
+    partes = []
+    for x in FEATURES:
+        ganho = data.remap(datas, [coefs['cenas'][d][x][1] for d in datas], glob[x][1]).toFloat()
+        offset = data.remap(datas, [coefs['cenas'][d][x][0] for d in datas], glob[x][0]).toFloat()
+        partes.append(feats.select(x).multiply(ganho).add(offset).rename(x))
+    flag = data.remap(datas, [2] * len(datas), 1).toUint8().rename('normalizacao')
+    return ee.Image.cat(partes), flag
+
+
 def treinar(pontos: ee.FeatureCollection, params: dict[str, dict]) -> dict:
     return {s: (ee.Classifier.smileRandomForest(**params[s])
                   .setOutputMode('REGRESSION')
@@ -129,14 +201,20 @@ def treinar(pontos: ee.FeatureCollection, params: dict[str, dict]) -> dict:
             for s in SWIR}
 
 
-def estimar(img, modelos: dict):
-    """Mosaico de saída: VNIR + SWIR estimado + TIR (INT32), saturado mascarado."""
+def estimar(img, modelos: dict, coefs: dict, modo: str):
+    """Saída: VNIR + SWIR estimado + TIR (INT32) + 'normalizacao'; saturado mascarado.
+
+    O RF recebe as features normalizadas; VNIR/TIR da saída são os medidos.
+    """
     img = img.updateMask(img.select('saturado').eq(0))
-    feats = img.select(FEATURES).toFloat()
-    feats = feats.updateMask(feats.mask().reduce(ee.Reducer.min()))
+    medidas = img.select(FEATURES).toFloat()
+    mascara = medidas.mask().reduce(ee.Reducer.min())
+    feats, flag = normalizar(img, coefs, modo)
+    feats = feats.updateMask(mascara)
     swir = [feats.classify(modelos[s], s).round().toInt32().rename(s) for s in SWIR]
-    medidas = feats.round().toInt32()
-    return ee.Image.cat([medidas.select(VNIR), *swir, medidas.select(TIR)]).select(SAIDA)
+    medidas = medidas.updateMask(mascara).round().toInt32()
+    return ee.Image.cat([medidas.select(VNIR), *swir, medidas.select(TIR),
+                         flag.updateMask(mascara)]).select(SAIDA + ['normalizacao'])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -151,6 +229,7 @@ def main():
               if t['state'] in ('READY', 'RUNNING') and t.get('description', '').startswith(PREFIXO)}
 
     print(f'\n══════ SWIR estimado (RF) — mosaicos {PERIODO} por célula → {DESTINO} ══════')
+    print('Normalização 2009–2020 → 2000–2008: ' + ', '.join(f'{g} = {m}' for g, m in NORMALIZACAO.items()))
     grupos = b.perguntar_opcao('Grupos:', [
         ('os dois (zero_cloud e semestral_v4)', GRUPOS),
         ('só zero_cloud', ['zero_cloud']),
@@ -183,6 +262,7 @@ def main():
     log.info(f'{ASSET_PONTOS}: {sum(pts_cel.values())} pontos em {len(pts_cel)} células')
 
     params = params_por_banda()
+    coefs = coeficientes()
     modelo_global = treinar(pontos, params)
     registro = []
     for (g, c), n_ent in zip(pendentes, contagens['entradas']):
@@ -190,7 +270,9 @@ def main():
         nome = nomes[(g, c)]
         n_pts = pts_cel.get(c, 0)
         por_cel = treino == 'celula' and n_pts >= MIN_PONTOS_CELULA
+        modo = NORMALIZACAO[g]
         linha = {'grupo': g, 'celula_id': c, 'celula_nome': cel['nome'], 'entradas': n_ent,
+                 'normalizacao': modo,
                  'treino': 'celula' if por_cel else 'global',
                  'n_pontos_treino': n_pts if por_cel else sum(pts_cel.values())}
         if n_ent == 0:
@@ -199,14 +281,14 @@ def main():
             continue
         if dry_run:
             log.info(f'{nome}: {n_ent} imagem(ns) de entrada, treino {linha["treino"]} '
-                     f'({linha["n_pontos_treino"]} pontos)')
+                     f'({linha["n_pontos_treino"]} pontos), normalização {modo}')
             registro.append({**linha, 'status': 'dry_run'})
             continue
 
         modelos = (treinar(pontos.filter(ee.Filter.eq('celula_id', c)), params) if por_cel
                    else modelo_global)
         entrada, origem = ENTRADAS[g](cel)
-        saida = (estimar(entrada, modelos).clip(cel['geom'])
+        saida = (estimar(entrada, modelos, coefs, modo).clip(cel['geom'])
                  .set({'grupo': g, 'periodo': PERIODO, 'celula_id': c, 'celula_nome': cel['nome'],
                        'origem': origem, 'swir': 'estimado_rf', 'treino': linha['treino'],
                        'n_pontos_treino': linha['n_pontos_treino'], 'pontos_treino': ASSET_PONTOS,
@@ -215,23 +297,26 @@ def main():
                        'bandas_estimadas': ','.join(SWIR), 'grid_asset': b.GRID_ASSET,
                        'SCALE_FACTORS': {**dict.fromkeys(VNIR + SWIR, b.ESCALA_TOA),
                                          **dict.fromkeys(TIR, 1)},
+                       'normalizacao': modo,
+                       'normalizacao_n_cenas_reta_propria': len(coefs['cenas']) if modo == 'cena' else 0,
+                       'normalizacao_coefs': ARQ_COEFS.name,
                        'DATA_TYPE': 'INT32', 'versao': VERSAO}))
         task = ee.batch.Export.image.toAsset(
             image=ee.Image(saida), description=nome, assetId=f'{DESTINO}/{nome}',
             region=cel['geom'], crs=b.CRS_EXPORT, crsTransform=b.CRS_TRANSFORM,
-            maxPixels=1e13, pyramidingPolicy={'.default': 'mean'})
+            maxPixels=1e13, pyramidingPolicy={'.default': 'mean', 'normalizacao': 'mode'})
         try:
             task.start()
         except ee.EEException as e:
             log.error(f'{nome}: falhou ao iniciar: {e}')
             registro.append({**linha, 'status': f'erro_inicio: {str(e)[:80]}'})
             continue
-        log.info(f'{nome}: task {task.id} (treino {linha["treino"]})')
+        log.info(f'{nome}: task {task.id} (treino {linha["treino"]}, normalização {modo})')
         registro.append({**linha, 'status': 'exportando', 'task_id': task.id})
 
     arq = Path(__file__).resolve().parent / f'registro_swir_rf_{datetime.now():%Y%m%d_%H%M}.csv'
     with open(arq, 'w', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=['grupo', 'celula_id', 'celula_nome', 'entradas', 'treino',
+        w = csv.DictWriter(f, fieldnames=['grupo', 'celula_id', 'celula_nome', 'entradas', 'normalizacao', 'treino',
                                           'n_pontos_treino', 'status', 'task_id'], extrasaction='ignore')
         w.writeheader()
         w.writerows(registro)
