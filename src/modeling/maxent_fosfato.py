@@ -27,6 +27,11 @@ Features (FEATURES_MODO)
     sílica      quartz_14_12 (B14/B12, TIR)
     composições sultan_r (B04/B07), sultan_g (B04/B01), sultan_b (B02/B3N·B04/B3N)
     textura     GLCM da B3N (janela 3×3): contrast, var, ent, hom (= idm do GEE)
+    fosforito   phosphorite_rbd = (ε11 + ε13) / (2·ε12) — profundidade relativa da
+                feição de emissividade do apatita em ~9 µm (B12; ombros B11 e B13),
+                Guha et al. 2019 (Remote Sensing 11:1003). Emissividade pelo método
+                de normalização (ε_max = 0,96) sobre a radiância TOA do TIR (DN → L
+                pelos UCC do ASTER L1T) — sem correção atmosférica.
   Um índice só entra se o mosaico tiver as bandas dele (sem SWIR → sem os de
   SWIR). Razões não dependem da escala × 1000; o SAVI usa reflectância (/1000).
   Os de TIR são razões de DN, não de emissividade — valem como contraste
@@ -158,6 +163,25 @@ INDICES = {
 # GLCM da B3N: nome no GEE → nome da feature ('idm' é a homogeneidade; o GEE não tem 'hom')
 TEXTURAS = {'contrast': 'contrast', 'var': 'var', 'ent': 'ent', 'idm': 'hom'}
 
+# TIR: DN → radiância (W m⁻² sr⁻¹ µm⁻¹) = (DN − 1) × UCC; λ central (µm)
+TIR_UCC   = {'B10': 6.822e-3, 'B11': 6.780e-3, 'B12': 6.590e-3, 'B13': 5.693e-3, 'B14': 5.225e-3}
+TIR_LAMBDA = {'B10': 8.291, 'B11': 8.634, 'B12': 9.075, 'B13': 10.657, 'B14': 11.318}
+EPS_MAX   = 0.96
+C1, C2    = 1.191042e8, 1.4387752e4   # Planck: W µm⁴ m⁻² sr⁻¹ ; µm K
+
+
+def emissividade_tir(img):
+    """Método de normalização de emissividade: T de cada banda com ε = EPS_MAX,
+    T_max por pixel, ε_i = L_i / B(λ_i, T_max)."""
+    L = {b: img.select(b).subtract(1).max(1).multiply(u) for b, u in TIR_UCC.items()}
+    T = {b: L[b].expression('c2 / (lam * log(eps * c1 / (pow(lam, 5) * L) + 1))',
+                            {'c1': C1, 'c2': C2, 'lam': TIR_LAMBDA[b], 'eps': EPS_MAX, 'L': L[b]})
+         for b in TIR_UCC}
+    tmax = ee.Image.cat(list(T.values())).reduce(ee.Reducer.max())
+    return {b: L[b].divide(tmax.expression('c1 / (pow(lam, 5) * (exp(c2 / (lam * t)) - 1))',
+                                           {'c1': C1, 'c2': C2, 'lam': TIR_LAMBDA[b], 't': tmax}))
+            for b in TIR_UCC}
+
 
 def calcular_features(img, bandas: list[str]):
     """Bandas e/ou índices conforme FEATURES_MODO. Devolve (imagem float, nomes)."""
@@ -170,6 +194,11 @@ def calcular_features(img, bandas: list[str]):
             if all(b in bandas for b in precisa):
                 partes.append(f(img).toFloat().rename(nome))
                 nomes.append(nome)
+        if all(b in bandas for b in TIR_UCC):
+            eps = emissividade_tir(img)
+            partes.append(eps['B11'].add(eps['B13']).divide(eps['B12'].multiply(2))
+                          .toFloat().rename('phosphorite_rbd'))
+            nomes.append('phosphorite_rbd')
         if 'B3N' in bandas:
             # B3N (refl. × 1000) 0–350 → 0–255 em byte para a GLCM
             b3n = img.select('B3N').unitScale(0, 0.35 * ESCALA_TOA).multiply(255).clamp(0, 255).toByte()

@@ -13,6 +13,29 @@ Convenções dos dados (iguais em todo o pipeline v4 / zero-cloud):
   pixels se mostraram nuvem (TIR frio), não solo claro — ver
   `building_dataset/saturacao_landsat_piloto.py`. Saem de todas as amostras.
 
+## Fluxo atual (resumo)
+
+```
+pontos pareados zero-cloud (00-08 × 09-20)          building_dataset/pontos_zero_cloud_pareados.py
+        │                                            building_dataset/baixar_pontos_pareados.py
+        ▼
+treino e diagnóstico (PLS × XGBoost × RF)            train_swir_models.ipynb  → RF escolhido
+        │   teste temporal, mesma estação, normalização por cena (seções 8–10)
+        ▼
+SWIR estimado 2009–2020, por célula                  estimar_swir_rf.py
+        │   VNIR/TIR normalizado por cena (OLS) → RF → ASTER_MOSAIC
+        ▼
+mosaico final por prioridade                         building_dataset/build_mosaico_final.py
+        │   zero-cloud 00-08 > zero-cloud 09-20 > v4 00-08 > v4 09-20 → aster-mosaico-final
+        ▼
+inferência de materiais                              maxent_fosfato.py (bandas + índices + GLCM)
+```
+
+**Estado (2026-10-12):** notebook completo rodado (RF R² teste 0,94–0,96);
+normalização por cena implementada no `estimar_swir_rf.py`; `ASTER_MOSAIC` e
+`aster-mosaico-final` ainda vazios (falta exportar); Maxent aguarda o mosaico
+final.
+
 ---
 
 ## 1. Problema central: estimar o SWIR depois de 2008
@@ -79,12 +102,15 @@ por ponto.
 O RF da execução completa (30 iterações do `RandomizedSearchCV`) escolheu os
 mesmos hiperparâmetros para as 6 bandas — no GEE: `numberOfTrees` 108,
 `variablesPerSplit` 5, `minLeafPopulation` 2, `bagFraction` 0,983, sem
-`maxNodes`. As colunas de PLS/XGBoost e o teste temporal vêm da busca reduzida
-(indicativos) e precisam ser atualizados com a execução completa.
+`maxNodes` (gravados em `models/zero_cloud/best_params.json`, que o
+`estimar_swir_rf.py` lê). As colunas de PLS/XGBoost e o teste temporal vêm da
+busca reduzida (indicativos).
 
 Dentro do período os modelos são bons, e o **RF é o escolhido** para a produção
-(seção 6.1). Na transferência para 2009–2020 todos ficam **piores que prever a
-média** (R² negativo). O problema não é o algoritmo.
+(seção 6.1). Na transferência para 2009–2020 sem correção todos ficam **piores
+que prever a média** (R² negativo) — as seções 4.2 e 4.3 mostram por quê e como
+corrigir: o problema é a diferença de data/estação entre as cenas, não o
+algoritmo.
 
 ## 4. Diagnóstico: por que não transfere (Célula 12A)
 
@@ -123,8 +149,7 @@ a partir do VNIR + TIR de 2009–2020 (pontilhado), ao lado do SWIR medido em
   SWIR mais baixo.
 
 **Conclusão:** confirma a seção 4 — o RF usa o TIR como "termômetro" e o SWIR
-estimado herda a temperatura da data. Reforça o teste 1 da seção 5 (TIR
-normalizado por cena) como prioridade.
+estimado herda a temperatura da data. Levou aos testes das seções 4.2 e 4.3.
 
 ### 4.2 Mesma estação e TIR anomalia (seção 9 do notebook)
 
@@ -180,43 +205,34 @@ avaliação com uma célula de fora por vez (fora da amostra).
 - Nas assinaturas (Célula 28), com a normalização o nível do SWIR estimado desce
   para perto do medido em 2000–2008, sem perder a ordem entre os pontos.
 
-**Para aplicar no GEE:** ganho e offset por banda **por cena** — exige a banda
-`data` no mosaico (zero-cloud tem; semestral v4 e `ASTER_MOSAIC` não) e cenas
-2009–2020 que cruzem células com cobertura 2000–2008; cena sem pares suficientes
-usa o ajuste global.
+**Adotado:** `ols` por cena, implementado no `estimar_swir_rf.py` (seção 6.1).
+Exige a banda `data` no mosaico (zero-cloud tem; semestral v4 não) e cenas
+2009–2020 que cruzem células com cobertura 2000–2008; cena com menos de 200
+pares usa a reta global.
 
-## 5. Próximos testes (em ordem)
+## 5. Testes — feitos e próximos
 
-0. **Época como feature** — acrescentar mês / dia do ano (seno e cosseno) da
-   cena às features. Por quê: as cenas de treino vão de janeiro a outubro; o
-   modelo pode aprender a corrigir o efeito da estação em vez de confundi-lo
-   com material. Exige a banda `data` no mosaico de aplicação.
-1. ~~**TIR normalizado por cena**~~ (feito — seção 4.2) — subtrair a média (ou z-score) do TIR da cena
-   de cada ponto, usando a coluna `data`. Por quê: remove o nível de temperatura
-   da data e mantém o contraste entre materiais (emissividade), que é o que
-   deveria informar o SWIR.
-2. **Sem TIR / com razões** — treinar só com VNIR, ou com razões entre bandas
-   (B02/B01, B3N/B02, B14/B10…). Por quê: razões cancelam efeitos multiplicativos
-   de iluminação e temperatura; mede quanto o TIR ajuda ou atrapalha.
-3. **Pares da mesma estação** — restringir o teste temporal a pontos cujas cenas
-   dos dois períodos caem na mesma época do ano. Por quê: separa o erro do
-   modelo da mudança sazonal real da superfície.
-4. **Validação espacial** — trocar o split aleatório por "uma célula de fora".
-   Por quê: pontos vizinhos são quase iguais; o split aleatório infla o R².
-5. **Execução completa do notebook** — rodar com `N_ITER_XGB = 60` e
-   `N_ITER_RF = 30` e salvar (Célula 22) para gerar
-   `models/zero_cloud/best_params.json`; o `estimar_swir_rf.py` passa a ler os
-   hiperparâmetros por banda de lá.
+| # | Teste | Situação | Resultado / por quê |
+|---|---|---|---|
+| — | Pares da mesma estação | **feito** (4.2) | R² +0,56–0,62: o limite é a sazonalidade |
+| — | TIR como anomalia da cena | **feito** (4.2) | ajuda com todos os pares, não na mesma estação |
+| — | Normalização radiométrica por cena | **feito e adotado** (4.3, 6.1) | R² −0,44 → +0,49 |
+| — | Execução completa do notebook | **feito** | `best_params.json` gerado |
+| 1 | **Época como feature** — mês / dia do ano (seno e cosseno) da cena | próximo | as cenas de treino vão de jan a out; o modelo pode aprender a descontar a estação. Exige a banda `data` no mosaico |
+| 2 | **Normalização + mesma estação no treino** — retas por cena ajustadas só com pares de estação próxima | próximo | separa a correção radiométrica da mudança sazonal real |
+| 3 | **Sem TIR / com razões** — só VNIR, ou razões (B02/B01, B3N/B02, B14/B10…) | aberto | mede quanto o TIR ajuda ou atrapalha depois da normalização |
+| 4 | **Validação espacial do modelo de SWIR** — uma célula de fora no treino do RF | aberto | o split aleatório por ponto infla o R² 0,94–0,96 |
+| 5 | **Banda `data` nos semestrais v4** | aberto | sem ela o grupo `semestral_v4` não é normalizado e mantém o viés |
+| 6 | Validar os números da seção 4.3 com a busca completa | aberto | a tabela 4.3 veio da busca reduzida |
 
 Critério para levar um modelo ao GEE: R² do teste temporal positivo e estável
-entre células.
+entre células — atingido pela normalização por cena (+0,49, fora da amostra).
 
-## 6. Aplicação no GEE (`estimate_swir_gee.ipynb` / `.py`)
+## 6. Aplicação no GEE
 
-Treina `smileGradientTreeBoost` direto no GEE e aplica ao mosaico. Ainda lê os
-pontos antigos (`projects/mapbiomas-arida/mine/points`). Só vale atualizar
-depois que a seção 5 achar uma configuração que transfere; aí o RF com os
-parâmetros do `best_params.json` é o candidato natural.
+Versão antiga: treina `smileGradientTreeBoost` no GEE com os pontos antigos
+(`projects/mapbiomas-arida/mine/points`). **Substituída** pelo
+`estimar_swir_rf.py` (6.1), que usa RF, os pontos pareados e a normalização.
 
 ### 6.1 Produção por célula (`estimar_swir_rf.py`)
 
@@ -246,6 +262,16 @@ os semestrais v4 não têm a banda `data`. A saída guarda VNIR/TIR **medidos** 
 SWIR estimado, mais a banda `normalizacao` (0 nenhuma, 1 global, 2 cena).
 Teste em L3C3: mediana B04 251 → 230, B08 101 → 85; 36% dos pixels com reta da
 cena, 64% com a global.
+
+**Treino por célula e limite de tamanho:** com `treino = celula`, cada célula usa
+os próprios pontos (2.000); as 8 células sem pontos 2000–2008 caíam no modelo
+global (34 mil pontos) e as 16 tasks delas falharam com `Image.classify: Computed
+value is too large` — o RF (108 árvores, `minLeafPopulation` 2, sem `maxNodes`)
+fica grande demais. Agora: célula sem pontos treina com as **vizinhas** (menor
+anel com ≥ 500 pontos; ex.: L2C5 → L2C4, L4C4 → L3C3+L4C3+L5C3+L5C4+L5C5) e todo
+RF usa no máximo `N_MAX_TREINO = 6000` pontos. A coluna/propriedade `treino` diz
+`celula`, `vizinhas:<células>` ou `global`. Reexecutar o script pula as 34 já
+salvas e reenvia só as que falharam.
 
 Ressalvas: a reta global tem ganho baixo (B14 0,31, B3N 0,40) e achata o que cai
 nela; o grupo `semestral_v4` continua sem normalização, com o viés da seção 4.1. Rodar primeiro em dry-run (confere entradas e a leitura dos pontos pela
@@ -320,6 +346,23 @@ cancelam iluminação e brilho geral; a textura separa afloramento de solo/culti
 uma vez — Maxent com features duplicadas só divide o peso. Mosaico sem SWIR →
 ficam só os índices de VNIR/TIR e textura (17 features contra 35).
 
+**Índice termal de fosforito (`phosphorite_rbd`):** (ε11 + ε13) / (2·ε12),
+de Guha et al. (2019, *Remote Sensing* 11:1003) — o apatita tem mínimo de
+emissividade em ~9 µm (B12), o dolomito quase não. Emissividade pelo método de
+normalização (ε_max 0,96) sobre radiância TOA (sem correção atmosférica). Teste no
+zero-cloud 2009–2020: mediana 1,0067 em 500 m dos pontos de fosfato × 1,0034 na
+grid (p10–p90 0,993–1,014) — sinal fraco, na direção certa. Cuidado: quartzo
+também tem mínimo entre 8,6 e 9,1 µm e eleva o índice (solos arenosos,
+coberturas detríticas).
+
+**Gamaespectrometria:** a coleção `prospectra/referencias` (solkanCengine) tem
+K, Th, U, razões e magnetometria do bloco, mas como **imagens coloridas 8 bits**
+(RGB 0–255), não em % / ppm, e cobre ~5% da grid — não serve como variável. O
+levantamento de origem provável é o **Campo Alegre de Lourdes – Mortugaba**
+(CPRM/CBPM, 2006, linhas a 500 m, 100 m de altura; inclui a região econômica de
+Irecê); os grids em valor físico precisam vir do GeoSGB/RIGEO ou da CBPM. Mane,
+Nordemann & Melfi (2017) acharam o **eTh** mais ligado ao fosfato de Irecê que o eU.
+
 **Cobertura (achado):** num buffer de 500 m, **nenhum** dos 29 pontos tem pixel
 no mosaico zero-cloud 2000–2008 (as células dos pontos são justamente as sem cena
 zero-cloud nesse período), e só 14 têm no zero-cloud 2009–2020. O mosaico de
@@ -343,10 +386,12 @@ cobertura nos pontos não há amostras de presença. Refazer com o
 
 | Arquivo | Papel |
 |---|---|
-| `train_swir_models.ipynb` | treino e comparação PLS × XGBoost × RF; teste temporal; diagnósticos (Células 12A e 21A) |
+| `train_swir_models.ipynb` | treino PLS × XGBoost × RF; teste temporal (8); mesma estação e TIR anomalia (9); normalização (10); diagnósticos (12A, 21A, 28) |
 | `train_swir_models.py` | versão script antiga (CSV `samples_v2`, com GPR) — não atualizada |
-| `estimate_swir_gee.ipynb` / `.py` | GTB no GEE com os pontos antigos — não atualizado (seção 6) |
-| `estimar_swir_rf.py` | produção: SWIR estimado por RF, por célula, → `ASTER_MOSAIC` |
+| `estimate_swir_gee.ipynb` / `.py` | GTB no GEE com os pontos antigos — substituído pelo `estimar_swir_rf.py` |
+| `estimar_swir_rf.py` | produção: VNIR/TIR normalizado por cena + SWIR estimado por RF, por célula, → `ASTER_MOSAIC` |
+| `models/zero_cloud/best_params.json` | hiperparâmetros do notebook (lidos pelo `estimar_swir_rf.py`) |
+| `models/zero_cloud/normalizacao_ols_cena_coef.csv` | retas da normalização por cena (gerado pelo `estimar_swir_rf.py`; fora do git) |
 | `maxent_fosfato.py` | favorabilidade para fosfato (Maxent), bandas + índices espectrais + GLCM |
 | `../building_dataset/build_mosaico_final.py` | mosaico final por prioridade (seção 6.2) → `aster-mosaico-final` |
 | `models/zero_cloud/` | figuras, modelos e métricas da versão com pontos pareados |

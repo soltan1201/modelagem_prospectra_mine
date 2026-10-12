@@ -13,7 +13,12 @@ Treino
   + TIR do mosaico zero-cloud 2000–2008. Um smileRandomForest (REGRESSION) por banda
   SWIR, features VNIR + TIR (B01, B02, B3N, B10–B14), alvo a banda SWIR.
   TREINO = 'global' → todos os pontos; 'celula' → só os pontos da célula (se
-  tiver ≥ MIN_PONTOS_CELULA; senão cai no global).
+  tiver ≥ MIN_PONTOS_CELULA). Célula sem pontos suficientes usa os pontos das
+  células VIZINHAS (anel 1, e se faltar o anel 2…) — mais perto e mais
+  parecidas que o bloco todo.
+  Todo treino é limitado a N_MAX_TREINO pontos (amostra aleatória): o RF com
+  os 34 mil pontos e minLeafPopulation 2 passava do limite do GEE
+  ("Image.classify: Computed value is too large").
 
 Normalização radiométrica 2009–2020 → 2000–2008 (train_swir_models.ipynb, seção 10)
   Antes do RF, cada banda VNIR/TIR do mosaico 2009–2020 é levada à escala de
@@ -28,7 +33,7 @@ Normalização radiométrica 2009–2020 → 2000–2008 (train_swir_models.ipyn
   O RF recebe as bandas normalizadas; a saída guarda VNIR/TIR MEDIDOS (sem
   normalização) e o SWIR estimado.
 
-Saída (ImageCollection DESTINO, conta superconta)
+Saída (ImageCollection DESTINO, conta ativa ou CONTA)
   ASTER_MOSAIC_<grupo>_2009_2020_<LxCy>, ex.: ASTER_MOSAIC_zero_cloud_2009_2020_L3C3
   Bandas: B01, B02, B3N (medidas), B04–B09 (ESTIMADAS), B10–B14 (medidas) —
   INT32, reflectância × 1000, TIR em DN; banda 'normalizacao' (UINT8: 0 nenhuma,
@@ -73,7 +78,10 @@ DESTINO          = f'{CAATINGA}/ASTER_MOSAIC'
 PASTA_ZERO_CLOUD = f'{CAATINGA}/ASTER_0cloud'      # ASTER_zero_cloud_2009_2020_<LxCy>
 PASTA_V4         = f'{CAATINGA}/ASTER_v4'          # ASTER_QualityMosaic_<ano>_semestre_<s>_<LxCy>_v4
 ASSET_PONTOS     = 'projects/mapbiomas-arida/mine/points_zeroCC_00_08'
-CONTA            = 'superconta'                    # escreve em mapbiomas-brazil
+# Conta do GEE: None = usa a conta ativa (~/.config/earthengine/current_user.txt)
+# e o projeto dela; um nome (ex.: 'superconta') troca as credenciais antes.
+# A conta precisa ter permissão de escrita em DESTINO.
+CONTA            = None
 
 PERIODO   = '2009_2020'
 ANOS      = (2009, 2020)
@@ -89,6 +97,8 @@ SAIDA    = VNIR + SWIR + TIR
 
 TREINO            = 'global'   # 'global' ou 'celula'
 MIN_PONTOS_CELULA = 500
+N_MAX_TREINO      = 6000       # teto de pontos por RF (2000 por célula funcionou; 34000 estourou)
+MAX_ANEL          = 3          # até quantos anéis de vizinhas procurar
 # train_swir_models.ipynb (RF, R² teste 0,94–0,96): mesmos para as 6 bandas
 RF_PARAMS = {'numberOfTrees': 108, 'variablesPerSplit': 5, 'minLeafPopulation': 2,
              'bagFraction': 0.983, 'maxNodes': None, 'seed': 42}
@@ -194,7 +204,24 @@ def normalizar(img, coefs: dict, modo: str):
     return ee.Image.cat(partes), flag
 
 
+def vizinhas(c: int, grid: dict, pts_cel: dict) -> list[int]:
+    """Células do menor anel em volta de c que somam ≥ MIN_PONTOS_CELULA pontos."""
+    lc = {cid: tuple(map(int, cel['nome'][1:].split('C'))) for cid, cel in grid.items()}
+    l0, c0 = lc[c]
+    for anel in range(1, MAX_ANEL + 1):
+        ids = [cid for cid, (l, cc) in lc.items()
+               if cid != c and max(abs(l - l0), abs(cc - c0)) <= anel and pts_cel.get(cid, 0) > 0]
+        if sum(pts_cel.get(i, 0) for i in ids) >= MIN_PONTOS_CELULA:
+            return ids
+    return []
+
+
+def limitar(pontos: ee.FeatureCollection) -> ee.FeatureCollection:
+    return pontos.randomColumn('_r', 42).sort('_r').limit(N_MAX_TREINO)
+
+
 def treinar(pontos: ee.FeatureCollection, params: dict[str, dict]) -> dict:
+    pontos = limitar(pontos)
     return {s: (ee.Classifier.smileRandomForest(**params[s])
                   .setOutputMode('REGRESSION')
                   .train(features=pontos, classProperty=s, inputProperties=FEATURES))
@@ -219,10 +246,13 @@ def estimar(img, modelos: dict, coefs: dict, modo: str):
 
 # ═══════════════════════════════════════════════════════════════════════════
 def main():
-    if b.ARQ_CONTA_ATUAL.read_text().strip() != CONTA:
-        b.usar_conta(CONTA)
+    ativa = b.ARQ_CONTA_ATUAL.read_text().strip()
+    conta = CONTA or ativa
+    if conta != ativa:
+        b.usar_conta(conta)
     else:
-        ee.Initialize(project=b.get_project_from_account(CONTA))
+        ee.Initialize(project=b.get_project_from_account(conta))
+    print(f'Conta GEE: {conta} (projeto {b.get_project_from_account(conta)})')
     grid = b.ler_grid()
     existentes = b.listar_destino(DESTINO, criar=True)
     ativas = {t['description'] for t in ee.data.getTaskList()
@@ -238,7 +268,7 @@ def main():
     celulas = b.perguntar_celulas(grid)
     treino = b.perguntar_opcao('Treino do RF:', [
         ('global — todos os pontos 2000–2008', 'global'),
-        (f'por célula — pontos da célula (≥ {MIN_PONTOS_CELULA}; senão global)', 'celula'),
+        (f'por célula — pontos da célula (≥ {MIN_PONTOS_CELULA}; senão das vizinhas)', 'celula'),
     ], padrao=1 if TREINO == 'global' else 2)
     dry_run = b.perguntar_opcao('Modo:', [
         ('só conferir entradas e pontos (dry-run, não exporta)', True),
@@ -270,11 +300,18 @@ def main():
         nome = nomes[(g, c)]
         n_pts = pts_cel.get(c, 0)
         por_cel = treino == 'celula' and n_pts >= MIN_PONTOS_CELULA
+        viz = vizinhas(c, grid, pts_cel) if treino == 'celula' and not por_cel else []
+        if por_cel:
+            modo_treino, ids_treino = 'celula', [c]
+        elif viz:
+            modo_treino, ids_treino = 'vizinhas:' + '+'.join(grid[i]['nome'] for i in viz), viz
+        else:
+            modo_treino, ids_treino = 'global', list(pts_cel)
+        n_treino = min(N_MAX_TREINO, sum(pts_cel.get(i, 0) for i in ids_treino))
         modo = NORMALIZACAO[g]
         linha = {'grupo': g, 'celula_id': c, 'celula_nome': cel['nome'], 'entradas': n_ent,
                  'normalizacao': modo,
-                 'treino': 'celula' if por_cel else 'global',
-                 'n_pontos_treino': n_pts if por_cel else sum(pts_cel.values())}
+                 'treino': modo_treino, 'n_pontos_treino': n_treino}
         if n_ent == 0:
             log.info(f'{nome}: sem mosaico de entrada — pulado')
             registro.append({**linha, 'status': 'sem_entrada'})
@@ -285,8 +322,8 @@ def main():
             registro.append({**linha, 'status': 'dry_run'})
             continue
 
-        modelos = (treinar(pontos.filter(ee.Filter.eq('celula_id', c)), params) if por_cel
-                   else modelo_global)
+        modelos = (modelo_global if modo_treino == 'global'
+                   else treinar(pontos.filter(ee.Filter.inList('celula_id', ids_treino)), params))
         entrada, origem = ENTRADAS[g](cel)
         saida = (estimar(entrada, modelos, coefs, modo).clip(cel['geom'])
                  .set({'grupo': g, 'periodo': PERIODO, 'celula_id': c, 'celula_nome': cel['nome'],
