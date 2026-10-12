@@ -4,3 +4,7 @@
 
 # Tabelas de dados e registros (amostras, pontos, registros de tasks)
 *.csv
+
+# Bytecode Python
+__pycache__/
+*.pyc
