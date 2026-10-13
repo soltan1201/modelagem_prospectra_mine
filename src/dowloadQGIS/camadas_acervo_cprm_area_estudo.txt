@@ -1,0 +1,491 @@
+================================================================================
+ ACERVO SIG - CPRM (plugin QGIS acervo_cprm) — CAMADAS PARA A ÁREA DE ESTUDO
+================================================================================
+Área de estudo : retângulo -44.46 / -14.79 / -39.20 / -9.42 (oeste/sul/leste/norte)
+                 ~580 km x 590 km, centro da Bacia de Irecê ~(-41.86, -11.30)
+Objetivo       : prospecção de fosfato (Grupo Una / Fm. Salitre, Bacia de Irecê)
+                 com mosaicos ASTER + MaxEnt (presença/fundo)
+Destino futuro : /mnt/Almacen/shpIRECE/
+Gerado a partir de:
+  - src/Dados/acervo_cprm/acervo_cprm_na_area_estudo.csv   (listar_QGIS.py)
+  - src/dowloadQGIS/conteudo_pacotes_area_estudo.csv       (inspecionar_pacotes.py:
+    lista dos arquivos dentro de cada .zip, lida por HTTP Range, sem baixar)
+
+Como ler as tabelas:
+  [id]  título   tamanho_do_zip   % da folha dentro da área   distância até Irecê
+  "temas" = shapefiles temáticos dentro do pacote (a base cartográfica —
+  drenagem, estradas, localidades, limites, linhas de transmissão — foi
+  omitida da lista, mas vem junto em quase todo pacote).
+  Distância 0 km = a caixa da folha/projeto contém Irecê.
+
+Proposta de prioridade (para decidirmos):
+  [A] baixar     [B] talvez / depende do uso     [C] não baixar
+
+ACHADO IMPORTANTE: NÃO há carta 1:100.000 cobrindo a Bacia de Irecê em si.
+A folha 1:100k mais próxima (Jacobina SC.24-Y-C-III) está a ~93 km. Na bacia,
+o melhor vetor geológico disponível é a folha Jacobina 1:250.000 (SC.24-Y-C),
+que contém Irecê, mais os mapas estaduais/regionais "sem caixa" (seção 9).
+
+Total dentro da área: 297 pacotes (119 mapas PDF ignorados aqui).
+
+================================================================================
+ 1. DICIONÁRIO DOS TEMAS (o que é cada shapefile e para que serve no projeto)
+================================================================================
+ lito / litoestratigrafia  Polígonos de unidades geológicas (sigla, nome, idade,
+                           litotipos). PRINCIPAL camada: mapear Fm. Salitre /
+                           Grupo Una (carbonatos hospedeiros do fosfato), máscara
+                           litológica para MaxEnt, rótulo para treino/validação
+                           de índices ASTER (carbonato, argilominerais, sílica).
+ recmin / recmin_mapa      Pontos de ocorrências e depósitos minerais (substância,
+                           status, rocha hospedeira). Fonte de PONTOS DE PRESENÇA
+                           de fosfato (filtrar substância = fosfato/apatita/
+                           fosforita) e de outros bens para validação.
+ recmin_historico_mapa     Ocorrências minerais históricas/garimpos.
+ estrutura / estrut        Linhas: falhas, fraturas, dobras, lineamentos, contatos.
+                           Variável de distância a estruturas (controle de
+                           mineralização) para o MaxEnt.
+ medida_estrutural/foliacao Pontos com atitudes (direção/mergulho). Pouco uso
+                           direto no modelo; útil para interpretação.
+ afloramento               Pontos de estações de campo com descrição de rocha.
+                           Verdade de campo para validar classificação ASTER.
+ geocronologia             Pontos com idades radiométricas. Interpretação apenas.
+ perfil_geologico          Linhas de seções geológicas. Interpretação apenas.
+ dique / veio_quartzo      Linhas/pontos de diques e veios. Secundário.
+ geodiv (geodiversidade)   Unidades geológico-ambientais simplificadas (relevo,
+                           solo, aquífero). Contexto; menos detalhe que "lito".
+ bifilar/unifilar/drenagem Hidrografia. Útil para máscara/água e geoquímica
+                           de sedimento de corrente; não é prioridade.
+ euler / linmag / gt_2sigma (Cartas de Anomalias) Soluções de Euler (fontes
+                           magnéticas, profundidade), lineamentos magnéticos,
+                           anomalias do gradiente total > 2 desvios. Estruturas
+                           profundas para o modelo.
+ *.tif aerogeofísica       Gamaespectrometria: K(%), eTh, eU, razões (U/K, Th/K,
+                           U/Th), contagem total, ternário RGB; magnetometria:
+                           campo anômalo (mag/cma), 1ª derivada vertical (1dv/dz),
+                           sinal analítico (sinal/isa), gradiente total (gt).
+                           eU e razões U/Th, U/K são proxy clássico de fosforito
+                           (apatita concentra urânio) => covariáveis para MaxEnt.
+ geologia_preditivo.tif    Mapa geológico preditivo gerado a partir da geofísica.
+ *.xyz (Geosoft)           Dados brutos de linhas de voo. Só servem para
+                           regridar no Oasis Montaj/Python; os .tif já são os
+                           grids prontos. => [C] salvo necessidade específica.
+ geoquímica .xlsx          Análises de rocha, solo, sedimento de corrente,
+                           concentrado de bateia (P2O5 quando analisado).
+                           Pontos de presença/ausência e validação.
+
+================================================================================
+ 2. CARTAS GEOLÓGICAS AO MILIONÉSIMO (GIS Brasil 2004) — SIG (Vetores)
+================================================================================
+ 4 folhas cobrem toda a área. Base regional contínua; recmin com ocorrências
+ de fosfato. Pequenas (~41 MB no total).  => [A]
+  [ 741] SIG (Vetores) - Aracaju SC.24                                      16.3 MB     30% dentro     0 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+  [ 846] SIG (Vetores) - Rio São Francisco SC.23                             4.6 MB     26% dentro    15 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+  [ 849] SIG (Vetores) - Salvador SD.24                                      5.1 MB     32% dentro    76 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+  [ 759] SIG (Vetores) - Brasília SD.23                                     15.4 MB     29% dentro    77 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+
+================================================================================
+ 3. CARTAS DE GEODIVERSIDADE AO MILIONÉSIMO — SIG (Vetores)
+================================================================================
+ Mesmo recorte das cartas geológicas, unidades geoambientais (relevo, solos,
+ aquíferos). Contexto, redundante com a seção 2.  => [B]
+  [2050] SIG (Vetores) - Geodiversidade Aracaju - SC.24                     13.2 MB     30% dentro     0 km de Irecê
+         temas: bifilar, estrut, geodiv, unifilar
+  [2085] SIG (Vetores) - Geodiversidade Rio São Francisco - SC.23            4.8 MB     26% dentro    15 km de Irecê
+         temas: bifilar, estrut, geodiv, unifilar
+  [2086] SIG (Vetores) - Geodiversidade Salvador - SD.24                     4.7 MB     32% dentro    76 km de Irecê
+         temas: bifilar, estrut, geodiv, uniflar
+  [2056] SIG (Vetores) - Geodiversidade Brasília - SD.23                    13.2 MB     29% dentro    77 km de Irecê
+         temas: bifilar, estrut, geodiv, unifilar
+
+================================================================================
+ 4. CARTAS GEOLÓGICAS 1:250.000 — SIG (Vetores)
+================================================================================
+ Jacobina SC.24-Y-C CONTÉM IRECÊ: melhor geologia disponível sobre a bacia. => [A]
+ Santo Antônio de Jesus fica no extremo leste (cristalino).               => [C]
+  [2617] SIG (Vetores) - Jacobina SC.24-Y-C                                  3.6 MB    100% dentro     0 km de Irecê
+         temas: aflora, areaurbana, bifilar, estrada, estrut, geocronologia, limite, limite_municipal, lito, localidade, unifilar
+  [2713] SIG (Vetores) - Santo Antônio de Jesus SD.24-V-B                    3.4 MB     86% dentro   165 km de Irecê
+         temas: aflora, areaurbana, barragem, bifilar, campodepouso, estrada, estrut, limite, limite_municpal, lito, localidade, serra, unifilar
+
+================================================================================
+ 5. CARTAS GEOLÓGICAS 1:100.000 — SIG (Vetores)   (62 pacotes, ~154 MB)
+================================================================================
+ Nenhuma cobre a Bacia de Irecê; cobrem as bordas (Chapada Diamantina, Jacobina,
+ Campo Formoso, Sobradinho, Paramirim). Pequenas (1–6 MB cada).
+ Proposta: [A] as que estão a até ~150 km de Irecê (lito + recmin + estrutura
+ para presença/validação do modelo em carbonatos e metassedimentos vizinhos);
+ [B] o resto. Onde há duas versões (2014 e 2019), ficar só com a de 2019
+ (tem recmin e perfil). Ordenadas por distância a Irecê.
+  [3586] SIG (Vetores) - Jacobina SC.24-Y-C-III (2019)                       2.1 MB    100% dentro    93 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [3589] SIG (Vetores) - Piritiba SC.24-Y-C-VI                               1.8 MB    100% dentro    95 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3587] SIG (Vetores) - Mirangaba SC.24-Y-A-VI                              2.5 MB    100% dentro    98 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [7400] SIG (Vetores) - Lajedinho SD.24-V-A-III                             1.9 MB    100% dentro   120 km de Irecê
+         temas: afloramento, estrutura, geocronologia, litoestratigrafia, medida_estrutural, perfil_geologico, recmin
+  [3591] SIG (Vetores) - Brejão da Caatinga SC.24-Y-A-III                    1.4 MB    100% dentro   127 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3195] SIG (Vetores) - Tombador SC.24-V-C-IV                               2.8 MB    100% dentro   140 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural
+  [3084] SIG (Vetores) - Remanso SC.23-X-D-VI                                2.6 MB    100% dentro   141 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin
+  [3175] SIG (Vetores) - Serra dos Brejinhos SC.24-V-C-V                     1.7 MB    100% dentro   146 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural
+  [2812] SIG (Vetores) - Boquira SD.23-X-B-V                                 3.9 MB    100% dentro   147 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural
+  [3592] SIG (Vetores) - Caldeirão Grande SC.24-Y-D-I                        3.1 MB    100% dentro   147 km de Irecê
+         temas: afloramento, dique, estrutura, geocronologia, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [3588] SIG (Vetores) - Mundo Novo SC.24-Y-D-IV                             3.4 MB    100% dentro   148 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3593] SIG (Vetores) - Campo Formoso SC.24-Y-B-IV                          5.8 MB    100% dentro   150 km de Irecê
+         temas: afloramento, dique, estrutura, geocronologia, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [7401] SIG (Vetores) - Itaetê SD.24-V-A-VI                                 2.9 MB    100% dentro   159 km de Irecê
+         temas: afloramento, estrutura, litoestratigrafia, medida_estrutural, perfil_geologico, recmin
+  [4080] SIG (Vetores) - Ruy Barbosa SD.24-V-B-I                             2.2 MB    100% dentro   165 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, recmin
+  [2843] SIG (Vetores) - Campo dos Cavalos SC.24-V-C-VI (Versão - 2014)      1.0 MB    100% dentro   168 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural
+  [3516] SIG (Vetores) - Campo dos Cavalos SC.24-V-C-VI (Versão - 2019)      1.2 MB    100% dentro   168 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [3590] SIG (Vetores) - Senhor do Bonfim SC.24-Y-B-I                        5.3 MB    100% dentro   170 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [2990] SIG (Vetores) - Lagoa do Alegre SC.24-V-C-I (Versão - 2014)         2.7 MB     17% dentro   194 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural
+  [3517] SIG (Vetores) - Lagoa do Alegre SC.24-V-C-I (Versão - 2019)         1.9 MB     17% dentro   194 km de Irecê
+         temas: afloramento, dique, estrutura, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [3515] SIG (Vetores) - Bom Jardim SC-23-X-D-III (Versão - 2019)            1.5 MB     17% dentro   195 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico_l, recmin_mapa
+  [2802] SIG (Vetores) - Bom Jardim SC.23-X-D-III (Versão - 2014)            2.7 MB     17% dentro   195 km de Irecê
+         temas: afloramento, estrutura, lito
+  [4076] SIG (Vetores) - Itaberaba SD.24-V-B-IV                              2.0 MB    100% dentro   196 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+  [3001] SIG (Vetores) - Macaúbas SD.23-X-D-II                               2.3 MB    100% dentro   196 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural
+  [2767] SIG (Vetores) - Avelino Lopes SC.23-Z-A-III                         2.8 MB    100% dentro   197 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+  [2851] SIG (Vetores) - Casa Nova SC.24-V-C-II (Versão - 2014)              2.9 MB     17% dentro   198 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural
+  [3518] SIG (Vetores) - Casa Nova SC.24-V-C-II (Versão - 2019)              2.8 MB     17% dentro   198 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [3555] SIG (Vetores) - Juremal SC.24-V-D-IV                                1.2 MB    100% dentro   203 km de Irecê
+         temas: dique, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [7410] SIG (Vetores) - Iramaia SD.24-V-C-III                               2.6 MB    100% dentro   206 km de Irecê
+         temas: afloramentos, estrutura, litoestratigrafia, medida_estrutural, perfil_geologico, recmin
+  [3156] SIG (Vetores) - São Raimundo Nonato SC.23-X-D-II                    2.9 MB     17% dentro   206 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+  [3061] SIG (Vetores) - Petrolina SC.24-V-C-III (Versão - 2014)             3.3 MB     17% dentro   215 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural
+  [3519] SIG (Vetores) - Petrolina SC.24-V-C-III (Versão - 2019)             3.3 MB     17% dentro   215 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [2756] SIG (Vetores) - Andorinha SC.24-Y-B-II                              2.7 MB    100% dentro   219 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, recmin
+  [6369] SIG (Vetores) - Bom Jesus da Lapa SD.23-X-D-I                       2.8 MB    100% dentro   221 km de Irecê
+         temas: estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3352] SIG (Vetores) - Cabeça no Tempo SC.23-X-C-VI                        2.8 MB    100% dentro   226 km de Irecê
+         temas: afloramento, estrutura, estrutura_sedimentar, lito, medida_estrutural, perfil_geologico, recmin, recmin_mapa
+  [3054] SIG (Vetores) - Peixe SC-23-X-D-I                                   2.4 MB     17% dentro   230 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin
+  [3005] SIG (Vetores) - Mansidão SC.23-Z-A-V                                3.8 MB     92% dentro   233 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lineamento_magnetico, lito, recmin, veio_quartzo
+  [4079] SIG (Vetores) - Maracás SD.24-V-D-I                                 1.4 MB    100% dentro   235 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito
+  [3100] SIG (Vetores) - Rio de Contas SD.24-V-C-IV                          2.0 MB    100% dentro   238 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin, veios_de_quartzo
+  [3551] SIG (Vetores) - Itamotinga SC.24-V-D-I (2019)                       2.1 MB     17% dentro   244 km de Irecê
+         temas: dique, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3069] SIG (Vetores) - Pinhões SC.24-V-D-V                                 3.8 MB    100% dentro   245 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, recmin
+  [3622] SIG (Vetores) - Curimatá SC.23-Z-A-II                               1.7 MB     92% dentro   247 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, perfil_geologico
+  [3087] SIG (Vetores) - Riacho de Santana SD.23-X-D-V                       1.7 MB    100% dentro   247 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, recmin
+  [7399] SIG (Vetores) - Olhos D&#39;água do Cruzeiro SD.24-V-C-VI           1.4 MB    100% dentro   255 km de Irecê
+         temas: afloramento, estrutura, geocronologia, litoestratigrafia, medida_estrutural, perfil_geologico, vila_p
+  [3018] SIG (Vetores) - Monte Santo SC.24-Y-B-III                           1.8 MB     59% dentro   269 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, recmin
+  [ 335] SIG (Vetores) - Amargosa SD.24-V-D-II                               1.4 MB    100% dentro   272 km de Irecê
+         temas: afloramento, estrutura, foliacao, lito
+  [4077] SIG (Vetores) - Jequié SD.24-V-D-IV                                 1.6 MB    100% dentro   279 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, recmin
+  [3552] SIG (Vetores) - Barro Vermelho SC.24-V-D-II                         3.1 MB     17% dentro   280 km de Irecê
+         temas: dique, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3202] SIG (Vetores) - Uauá SC.24-V-D-VI                                   1.6 MB     59% dentro   291 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, medida_estrutural, recmin
+  [2819] SIG (Vetores) - Brumado SD.24-Y-A-I                                 2.4 MB    100% dentro   292 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin, veios_de_quartzo
+  [ 388] SIG (Vetores) - Caetité SD.23-Z-B-III                               1.8 MB    100% dentro   292 km de Irecê
+         temas: afloramento, estrutura, lito, recmin
+  [3192] SIG (Vetores) - Tanhaçu SD.24-Y-A-II                                2.6 MB    100% dentro   294 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin, veios_de_quartzo
+  [3138] SIG (Vetores) - Santa Maria da Vitória SD.23-X-C-II (Versão -       1.6 MB     92% dentro   295 km de Irecê
+         temas: estrutura, lito, medida_estrutural
+  [4659] SIG (Vetores) - Santa Maria da Vitória SD.23-X-C-II (Versão -       2.5 MB     92% dentro   295 km de Irecê
+         temas: afloramento, contato, estrutura, lito, medida_estrutural, recmin
+  [7411] SIG (Vetores) - Mirante SD.24-Y-A-III                               3.2 MB    100% dentro   306 km de Irecê
+         temas: afloramentos, estrutura, geocronologia, litoestratigrafia, medida_estrutural, perfil_geologico
+  [ 481] SIG (Vetores) - Jaguaquara SD.24-V-D-V                              1.1 MB    100% dentro   311 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito
+  [3549] SIG (Vetores) - Macururé SC.24-V-D-III                              1.7 MB     10% dentro   321 km de Irecê
+         temas: afloramento, dique, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [4078] SIG (Vetores) - Manuel Vitorino SD.24-Y-B-I                         3.0 MB    100% dentro   327 km de Irecê
+         temas: afloramento, estrutura, geocronologia, lito, recmin
+  [2868] SIG (Vetores) - Condeúba SD.24-Y-A-IV                               4.1 MB     58% dentro   346 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin
+  [5790] SIG (Vetores) - Anagé SD.24-Y-A-V                                   3.3 MB     58% dentro   348 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin, recmin_historico_mapa
+  [ 458] SIG (Vetores) - Ipiaú SD.24-Y-B-II                                  2.5 MB    100% dentro   354 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin
+  [5933] SIG (Vetores) - Vitória da Conquista SD.24-Y-A-VI                   2.5 MB     58% dentro   358 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin, recmin_historico_mapa
+  [5791] SIG (Vetores) - Poções SD.24-Y-B-IV                                 3.3 MB     58% dentro   376 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, recmin, recmin_historico_mapa
+
+================================================================================
+ 6. CARTAS GEOLÓGICAS 1:50.000 — SIG (Vetores)   (11 pacotes, ~8 MB)
+================================================================================
+ Todas na região de Sobradinho/Remanso (SC.24-V-C, SC.23-X-D), 140–230 km ao
+ norte de Irecê. Detalhe alto, mas longe do alvo.  => [B]
+  [3501] SIG (Vetores) - SC.24-V-C-IV-3                                      0.9 MB    100% dentro   140 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3506] SIG (Vetores) - SC.23-X-D-VI-4                                      1.0 MB    100% dentro   141 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3496] SIG (Vetores) - SC.24-V-C-IV-4                                      0.7 MB    100% dentro   141 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3498] SIG (Vetores) - SC.24-V-C-V-3                                       0.5 MB    100% dentro   146 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3503] SIG (Vetores) - SC.24-V-C-IV-1                                      1.1 MB    100% dentro   167 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3502] SIG (Vetores) - SC.24-V-C-IV-2                                      0.9 MB    100% dentro   168 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3497] SIG (Vetores) - SC.24-V-C-V-1                                       0.6 MB    100% dentro   172 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3500] SIG (Vetores) - SC.24-V-C-VI-4                                      0.2 MB    100% dentro   185 km de Irecê
+         temas: afloramento, dique, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3505] SIG (Vetores) - SC.24-V-C-I-3                                       0.6 MB     33% dentro   194 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3499] SIG (Vetores) - SC.24-V-C-VI-2                                      0.6 MB    100% dentro   206 km de Irecê
+         temas: afloramento, dique, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+  [3504] SIG (Vetores) - SC.24-V-C-III-4                                     0.6 MB     33% dentro   228 km de Irecê
+         temas: afloramento, estrutura, lito, medida_estrutural, perfil_geologico, recmin_mapa
+
+================================================================================
+ 7. AEROGEOFÍSICA — PROJETOS (Geotiff = grids prontos; XYZ = dado bruto)
+================================================================================
+ 1042 Norte da Chapada Diamantina (-45.5/-12.17/-41.0/-10.0) CONTÉM IRECÊ.
+   1042-Geotif => [A]  (K, eTh, eU, razões, mag; 12 MB)
+ 3067 Campo Alegre de Lourdes–Mortugaba (-43.5/-15.19/-42.0/-9.25), 15 km a
+   oeste de Irecê, cobre 28% da área; pacote "Base" de 2,2 GB  => [B]
+ 1027 Borda Sul da Bacia do Parnaíba, 1023 Serra de Itiúba, 1115 Bambuí-Bahia
+   => [B] só Geotif (pequenos)
+ Demais (1021, 1024, 1087, 1089, 1103, 3089, 1009, 3070, 3076, 3086) => [C]
+ Todos os *-XYZ => [C] (os Geotif já trazem os grids)
+  [ 942] 1042-Geotif                                                        12.4 MB     77% dentro     0 km de Irecê
+  [ 943] 1042-XYZ                                                           49.7 MB     77% dentro     0 km de Irecê
+  [1124] 3067 - Base (Geotif, XYZ, Kmz ...)                               2213.1 MB     90% dentro    15 km de Irecê
+  [ 916] 1027-Geotif                                                        20.1 MB     36% dentro    32 km de Irecê
+  [ 917] 1027-XYZ                                                           33.5 MB     36% dentro    32 km de Irecê
+  [ 910] 1023-Geotif                                                        12.1 MB     77% dentro    93 km de Irecê
+  [ 911] 1023-XYZ                                                           36.5 MB     77% dentro    93 km de Irecê
+  [1081] 1115-Geotif                                                        10.3 MB     68% dentro    96 km de Irecê
+  [1082] 1115-XYZ                                                         1282.0 MB     68% dentro    96 km de Irecê
+  [ 906] 1021-Geotif                                                         7.8 MB     63% dentro   120 km de Irecê
+  [ 907] 1021-XYZ                                                           34.2 MB     63% dentro   120 km de Irecê
+  [ 912] 1024-Geotif                                                         3.6 MB    100% dentro   138 km de Irecê
+  [ 913] 1024-XYZ                                                            1.8 MB    100% dentro   138 km de Irecê
+  [1026] 1087-Geotif                                                        11.8 MB     58% dentro   140 km de Irecê
+  [1027] 1087-XYZ                                                          482.9 MB     58% dentro   140 km de Irecê
+  [1030] 1089-Geotif                                                        12.8 MB     55% dentro   177 km de Irecê
+  [1031] 1089-XYZ                                                          422.2 MB     55% dentro   177 km de Irecê
+  [1126] 3089-Geotif                                                         8.6 MB     54% dentro   215 km de Irecê
+  [1058] 1103-Geotif                                                         6.5 MB     34% dentro   255 km de Irecê
+  [1059] 1103-XYZ                                                          437.7 MB     34% dentro   255 km de Irecê
+  [ 888] 1009-Geotif                                                         2.9 MB      3% dentro   322 km de Irecê
+  [ 889] 1009-XYZ                                                            6.8 MB      3% dentro   322 km de Irecê
+  [6677] 3076 - Base (Geotif, XYZ, Kmz ...)                                935.0 MB     12% dentro   327 km de Irecê
+  [6674] 3070 - Base (Geotif, XYZ, Kmz ...)                               1388.1 MB      6% dentro   359 km de Irecê
+  [6685] 3086 - Base (Geotif, XYZ, Kmz ...)                               1232.9 MB      9% dentro   397 km de Irecê
+
+ Conteúdo típico de um Geotif (ex. 1023): 1023_ct, _kperc, _eth, _eu,
+ _thkrazao, _ukrazao, _uthrazao, _ternario_rgb, _mag, _1dv, _sinal (.tif).
+
+================================================================================
+ 8. CARTAS DE ANOMALIAS (FIOL e SE da Borborema) — 32 folhas, ~5,5 GB
+================================================================================
+ Pacote "Base (Vetores, Kmz e Geotif)" por folha 1:100k: grids gama/mag em
+ alta resolução + euler.shp, linmag.shp, gt_2sigma.shp, geologia_preditivo.tif.
+ Todas no sul (FIOL, SD.23/SD.24) ou leste (Borborema), >= 179 km de Irecê.
+ => [C] por enquanto; [B] se o modelo for estendido para o sul da área.
+ Os itens "Carta de Anomalias - Folha ... (ano)" são PDFs (ignorar).
+  [6982] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-B-IV                 143.0 MB    100% dentro   179 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5341] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-D-II                 161.1 MB    100% dentro   196 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6981] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-A-VI                 160.9 MB    100% dentro   219 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5344] Base (Vetores, Kmz e Geotif) - Folha SD.24-V-D-I                  177.9 MB    100% dentro   235 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6978] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-A-II                 110.7 MB     92% dentro   243 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5342] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-D-V                  157.1 MB    100% dentro   247 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6640] Base (Vetores, Kmz e Geotif) - Folha SC.24-Y-D-III                241.6 MB     59% dentro   255 km de Irecê
+         temas: euler, gt2sigma, limite_folha, lineamentos_mag
+  [6984] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-C-III                154.7 MB    100% dentro   255 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6639] Base (Vetores, Kmz e Geotif) - Folha SC.24-Y-B-VI                 236.8 MB     59% dentro   257 km de Irecê
+         temas: euler, gt2sigma, limite_folha, lineamentos_mag
+  [6980] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-A-V                  150.2 MB     92% dentro   265 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6988] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-D-IV                 204.2 MB    100% dentro   268 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6638] Base (Vetores, Kmz e Geotif) - Folha SC.24-Y-B-III                251.1 MB     59% dentro   269 km de Irecê
+         temas: euler, gt2sigma, limite_folha, lineamentos_mag
+  [5345] Base (Vetores, Kmz e Geotif) - Folha SD.24-V-D-II                 186.3 MB    100% dentro   272 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5346] Base (Vetores, Kmz e Geotif) - Folha SD.24-V-D-IV                 183.2 MB    100% dentro   279 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5343] Base (Vetores, Kmz e Geotif) - Folha SD.23-Z-B-III                181.7 MB    100% dentro   292 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5348] Base (Vetores, Kmz e Geotif) - Folha SD.24-Y-A-I                  179.9 MB    100% dentro   292 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5349] Base (Vetores, Kmz e Geotif) - Folha SD.24-Y-A-II                 192.0 MB    100% dentro   294 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5340] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-C-II                 185.6 MB     92% dentro   295 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6987] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-C-VI                 156.1 MB    100% dentro   296 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6993] Base (Vetores, Kmz e Geotif) - Folha SD.23-Z-B-II                 166.6 MB    100% dentro   300 km de Irecê
+         temas: euler, gt_sd.23-z-b-ii_lnz, limite_folha, linmag
+  [5347] Base (Vetores, Kmz e Geotif) - Folha SD.24-V-D-V                  215.0 MB    100% dentro   311 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6992] Base (Vetores, Kmz e Geotif) - Folha SD.23-Z-B-I                  154.0 MB    100% dentro   317 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6656] Base (Vetores, Kmz e Geotif) - Folha SC.24-V-D-III                265.6 MB     10% dentro   321 km de Irecê
+         temas: euler, gt2sigma, limite_folha, lineamentos_mag
+  [5351] Base (Vetores, Kmz e Geotif) - Folha SD.24-Y-B-I                  207.8 MB    100% dentro   327 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6986] Base (Vetores, Kmz e Geotif) - Folha SD.23-X-C-V                  166.0 MB     92% dentro   331 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6991] Base (Vetores, Kmz e Geotif) - Folha SD.23-Z-A-III                135.2 MB    100% dentro   341 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [5350] Base (Vetores, Kmz e Geotif) - Folha SD.24-Y-A-IV                 168.1 MB     58% dentro   346 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6995] Base (Vetores, Kmz e Geotif) - Folha SD.23-Z-B-V                  112.6 MB     58% dentro   352 km de Irecê
+         temas: euler, gt_sd.23-z-b-v_lnz, limite_folha, linmag
+  [5352] Base (Vetores, Kmz e Geotif) - Folha SD.24-Y-B-II                 223.0 MB    100% dentro   354 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6994] Base (Vetores, Kmz e Geotif) - Folha SD.23-Z-B-IV                  66.1 MB     58% dentro   367 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6990] Base (Vetores, Kmz e Geotif) - Folha SD.23-Z-A-II                  84.3 MB     92% dentro   372 km de Irecê
+         temas: euler, gt_2sigma, limite_folha, linmag
+  [6996] Base (Vetores, Kmz e Geotif) - Folha SD.24-Y-B-III                203.2 MB     59% dentro   387 km de Irecê
+         temas: euler, gt_sd.24-y-b-iii_lnz, limite_folha, linmag
+
+================================================================================
+ 9. GEOQUÍMICA (planilhas .xlsx, às vezes com .shp dos pontos)
+================================================================================
+ Dentro da área (pela folha):
+   4599 Morro do Chapéu PLGB (44 km de Irecê): rocha, solo, sedimento,
+        bateia + shp dos pontos => [A]
+   Demais folhas (Petrolina, Campo Alegre de Lourdes, Bom Jardim, Avelino Lopes,
+        S. Raimundo Nonato, Mansidão, Santa Maria da Vitória, Riacho do Pontal,
+        Itabuna-Ibicaraí): longe de Irecê => [C] (ou [B] se P2O5 for analisado)
+  [4599] Folha Morro do Chapéu - SC.24-Y-C-V - PLGB (1997)                   0.7 MB    100% dentro    44 km de Irecê
+         temas: folha_morro_do_chapeu_plgb
+  [4622] Folha Petrolina - SC.24-V-C - PLGB (1997)                           0.2 MB     58% dentro   140 km de Irecê
+  [4601] Folha Campo Alegre de Lourdes - SC.23-X-D-IV - PLGB (1997)          0.4 MB    100% dentro   187 km de Irecê
+         temas: folha_campo_alegre_de_lourdes_plgb
+  [4066] Geologia e Recursos Minerais da Folha Bom Jardim - SC.23-X-D-I      0.1 MB     17% dentro   195 km de Irecê
+         temas: geologia_e_recursos_minerais_da_folha_bom_jardim
+  [7430] Geologia e Recursos Minerais da Folha Bom Jardim - SC.23-X-D-I      0.2 MB     17% dentro   195 km de Irecê
+  [3882] Geologia e Recursos Minerais da Folha Avelino Lopes - SC.23-Z-      0.2 MB    100% dentro   197 km de Irecê
+  [3318] Geologia e Recursos Minerais da Folha São Raimundo Nonato - SC      0.3 MB     17% dentro   206 km de Irecê
+  [4560] Riacho do Pontal - Folha Petrolina - SC.24-V-C-III (1990)           0.2 MB     17% dentro   215 km de Irecê
+         temas: riacho_do_pontal_fl_petrolina
+  [5300] Geologia e Recursos Minerais da Folha Mansidão - SC.23-Z-A-V (      0.6 MB     92% dentro   233 km de Irecê
+         temas: folha_mansidao
+  [4561] Riacho do Pontal - Folha Itamotinga - SC.24-V-D-I (1990)            0.2 MB     17% dentro   244 km de Irecê
+         temas: riacho_do_pontal_fl_itamotinga
+  [7438] Geologia e Recursos Minerais da Folha Santa Maria da Vitória -      0.3 MB     92% dentro   295 km de Irecê
+  [4613] Itabuna-Ibicaraí - Folha Ibicaraí - SD.24-Y-B-V (1989)              0.9 MB     58% dentro   400 km de Irecê
+  [4612] Itabuna-Ibicaraí - Folha Itabuna - SD.24-Y-B-VI (1989)              0.6 MB     34% dentro   429 km de Irecê
+         temas: itabuna_ibicarai_folha_itabuna
+
+================================================================================
+ 10. "SEM CAIXA" — relevantes, mas o catálogo não diz onde ficam
+================================================================================
+ O plugin não consegue localizar estas camadas (sem código de folha); filtrei
+ manualmente as que tratam da Bahia / Irecê / fosfato. Conteúdo lido dos zips.
+
+ [A] Agrominerais da Região de Irecê–Jaguarari (2016) — geoquímica de
+     agrominerais (fosfato, calcário) NA BACIA DE IRECÊ. Mais importante para
+     pontos de presença/validação.
+  [7420] Agrominerais da Região de Irecê - Jaguarari (2016)                      0.2 MB
+ [A] Geologia do Estado da Bahia (1:1.000.000) — bahia_lito, bahia_recmin,
+     bahia_estrut, bahia_dique, bahia_afloramento. Mapa contínuo do estado.
+  [5984] SIG (Vetores) - Geologia do Estado da Bahia                            19.9 MB
+ [A] Calcários da Bahia (2021) — geoquímica de calcários (hospedeiros do
+     fosfato em Irecê).
+  [6719] Calcários da Bahia (2021)                                               1.1 MB
+ [A] Projeto Morro do Chapéu (1995) — geologia/litologia + recursos minerais,
+     ocorrências, dolinas (carste!), solos, geomorfologia, hidrogeologia,
+     capacidade de uso; vizinho imediato de Irecê.
+  [6691] SIG (Vetores) - Projeto Morro do Chapéu - Ba (1995)                   289.0 MB
+ [B] Mapa Tectônico-Geocronológico da Bahia — domínios tectônicos, estruturas,
+     descontinuidades magnéticas, recmin, kimberlitos.
+  [6021] SIG (Vetores) - Mapa Tectônico-Geocronológico da Bahia: Implicaçõe     17.6 MB
+ [B] Geologia da Bacia do São Francisco — lito, estrutura, furos ANP, perfis
+     (Irecê é parte do Cráton/Supergrupo São Francisco).
+  [6714] SIG (Vetores) - Geologia da Bacia do São Francisco                     64.3 MB
+ [B] ARIM Serra de Jacobina — lito, recmin, estrutura (borda leste da bacia).
+  [3594] SIG (Vetores) - ARIM Serra de Jacobina                                 21.3 MB
+ [B] Geoquímica do Bambuí Etapas I e II – BA (correlato do Grupo Una):
+     rocha, solo, sedimento, bateia + shp.
+  [4643] Geoquímica do Bambuí - Etapa II - BA (1980)                             1.3 MB
+  [4646] Geoquímica do Bambuí - Etapa II - BA (1997)                             1.4 MB
+ [B] Ibitiara–Rio de Contas; Barra–Oliveira dos Brejinhos; ARIM Remanso–
+     Sobradinho — lito + recmin regionais (Chapada / Paramirim / norte).
+  [3395] SIG (Vetores) - Ibitiara - Rio de Contas                                4.9 MB
+  [3398] SIG (Vetores) - Barra-Oliveira dos Brejinhos                            8.4 MB
+  [3528] SIG (Vetores) - Mapa Geológico: ARIM Remanso-Sobradinho                15.0 MB
+ [C] Geodiversidade do Estado da Bahia — 1 GB, muitas camadas de infraestrutura;
+     só "Solos", "Zonas de interesse mineral" e "Geodiversidade_Bahia" interessam.
+  [2181] SIG (Vetores) - Geodiversidade do Estado da Bahia (1:1.000.000)      1023.8 MB
+ [C] Ocorrências de Fosfato de Poço Danta (Faixa Riacho do Pontal, PE/BA —
+     fora da área, contexto de fosfato sedimentar).
+  [3584] SIG (Vetores) - Ocorrências de Fosfato de Poço Danta                    0.1 MB
+
+================================================================================
+ 11. NÃO BAIXAR
+================================================================================
+ - Mapas PDF (119)                       — pedido explícito
+ - KML (23)                              — mesmos dados dos SIG (Vetores)
+ - Geofísica XYZ (10)                    — dado bruto Geosoft; Geotif basta
+ - LiDAR / ortofoto                      — nenhum sobre a área
+ - Base cartográfica dentro dos pacotes  — pode ser descartada após extrair
+   (drenagem, malha viária, localidades, limites, linhas de transmissão)
+
+================================================================================
+ 12. RESUMO DA PROPOSTA [A]
+================================================================================
+ - 4 SIG ao milionésimo (geológico)                     ~41 MB
+ - Jacobina 1:250k (contém Irecê)                       ~4 MB
+ - 1:100k a até ~150 km de Irecê, versão mais nova      ~35 MB
+ - Aerogeofísica 1042-Geotif                            ~12 MB
+ - Geoquímica Morro do Chapéu PLGB                      ~1 MB
+ - Sem caixa: Agrominerais Irecê, Geologia BA,
+   Calcários BA, Projeto Morro do Chapéu               ~310 MB
+ Total [A] ~ 400 MB
+
+ Decisões em aberto:
+  1. Confirmar/ajustar [A]; quais [B] entram.
+  2. Raio de corte para as 1:100k (150 km? todas — só ~154 MB?).
+  3. Guardar só os temas geológicos (lito, recmin, estrutura, afloramento) ou
+     o pacote inteiro em /mnt/Almacen/shpIRECE/.
+  4. Estrutura de pastas: por série (milionesimo/, 100k/, aerogeofisica/...)
+     ou por id do catálogo.

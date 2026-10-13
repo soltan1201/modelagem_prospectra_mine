@@ -45,21 +45,41 @@ def GetPolygonsfromFolder(assetFolder, sufixo, lstBacias= [], lstYear= [], play_
         # if str(name).startswith(sufixo): AMOSTRAS/col7/CAATINGA/classificationV
     cc = 0
     sizeFiles = len(lst_path)
-    for npath in lst_path:        
+    lst_erros = []
+    for npath in lst_path:
         name = npath.split("/")[-1]
         if len(name) > 0:
             print(f"eliminando {cc}/{sizeFiles}:  {name}")
-            print(path_)
+            print(npath)
             if play_eliminar:
-                ee.data.deleteAsset(npath) 
-                # pass
+                try:
+                    ee.data.deleteAsset(npath)
+                except ee.EEException as e:
+                    # asset já apagado ou conta sem permissão de apagar: registra e segue
+                    print(f"   ERRO ao eliminar {name}: {e}")
+                    lst_erros.append(npath)
 
         cc += 1
-    
+
     print(lstBacias)
+    if lst_erros:
+        print(f"{len(lst_erros)}/{sizeFiles} assets NÃO foram eliminados (ver ERRO acima)")
 
 
-asset = {'id': 'projects/mapbiomas-arida/mine/points'}
+# asset = {'id': 'projects/mapbiomas-arida/mine/points'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/agosto2022'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/SHP/others'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/SHP/shp'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/SHP/shp2022'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/SHP/shp2023'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/SHP/shp2024'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/SHP/shp2025'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/ROIs/2021ROIs'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/ROIs/2022ROIs'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/ROIs/2023ROIs'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/shps'}
+# asset = {'id': 'projects/mapbiomas-arida/ALERTAS/statist'}
+asset = {'id': 'projects/mapbiomas-arida/Barragem/ROIS'}
 
 lstbacias = []  # 7764
 lst_years = []

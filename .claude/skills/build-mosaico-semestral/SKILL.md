@@ -1,6 +1,6 @@
 ---
 name: build-mosaico-semestral
-description: Use when the user wants to build, update, or debug a semestral ASTER quality-mosaic script for the Irecê (BA) pipeline — creating a new ano/semestre script, tuning cloud/shadow thresholds, managing the image blacklist/zero-cloud lists, or fixing the quality-score function. Triggers on "mosaico semestral", "novo semestre ASTER", "blacklist de imagens", "quality score ASTER", "select_black_list_save_mosaicSem".
+description: Use when the user wants to build, update, or debug a semestral ASTER quality-mosaic script for the Irecê (BA) pipeline (Python v2/v5 dry-season scripts or the legacy Code Editor JS) — creating a new ano/semestre script, tuning cloud/shadow thresholds, managing the image blacklist/zero-cloud lists, or fixing the quality-score function. Triggers on "mosaico semestral", "novo semestre ASTER", "blacklist de imagens", "quality score ASTER", "select_black_list_save_mosaicSem", "build_mosaicos_semestrais_v2", "zero cloud v2", "ASTER_v5", "colcha de retalhos".
 ---
 
 # Build Mosaico Semestral (ASTER)
@@ -11,6 +11,40 @@ de Irecê (BA), como etapa 1 do pipeline descrito em
 [src/building_dataset/readme_notas.md](../../../src/building_dataset/readme_notas.md).
 
 Ver [SPEC.md](SPEC.md) para o contrato formal (entradas/saídas/pré-condições).
+
+## Pipeline atual: Python (earthengine-api) — leia antes do JS
+
+Desde 2026-10 o mosaico semestral roda em Python, não no Code Editor. O JS
+abaixo é o legado (template das regras). Scripts atuais, em
+`src/building_dataset/`:
+
+| Script | Versão | Destino |
+|---|---|---|
+| `build_mosaicos_semestrais.py` | v4 (ano todo, quality v5) | `.../CAATINGA/ASTER_v4` (mapbiomas-brazil) |
+| `build_mosaicos_semestrais_v2.py` | **v5**: só `MESES_SECOS=(7,10)`, quality v6 | `projects/mapbiomas-arida/mine/ASTER_v5` |
+| `build_mosaicos_zero_cloud_v2.py` | `zero_cloud_v2_seco` | `projects/mapbiomas-arida/mine/ASTER_0cloud_v2` |
+
+Regras do v2 (motivo: tirar a "colcha de retalhos" de cenas verdes ao lado
+de cenas secas — diagnóstico: fenologia, não iluminação):
+- só cenas jul–out; o semestre 1 fica vazio;
+- **quality v6**: termo de vegetação invertido (SAVI baixo soma pontos);
+  zero-cloud = `QUALITY_ZERO_CLOUD + 500 × (1 − SAVI normalizado)`;
+- zero-cloud v2: cenas ordenadas por `ndvi_cena` (NDVI mediano na célula),
+  a mais seca por cima;
+- escala: TOA × 1000 (B01–B09), TIR em DN, INT32, 15 m, EPSG:4326 com
+  `CRS_TRANSFORM` ancorado no canto NW (células encaixam pixel a pixel);
+- export por célula da grid 5 × 5 (`grid_irece_5x5_solape100`), nome
+  `ASTER_QualityMosaic_<ano>_semestre_<N>_<LxCy>_v5`;
+- listas lidas de `lista_imagens_Notaceites.txt` (blacklist) e
+  `list_zero_cloud.txt`; zero-cloud v2 lê as linhas ativas de
+  `src/show_mosaics/visualizar_zero_cloud.js`;
+- multi-conta: `CONTAS_V2` (caatinga01–05, solkan1201, solkanGeodatin,
+  solkanCengine), rodízio a cada `TASKS_POR_CONTA`; **superconta fora**
+  (não lê nem escreve mapbiomas-arida). Ver skill `gee-contas-assets`.
+- interativo; o usuário roda sozinho. Não rodar export por conta própria.
+
+Para o mosaico único (zero-cloud + preenchimento, com/sem SWIR) ver a skill
+`build-mosaico-unico`.
 
 ## Arquivo de referência
 
@@ -67,6 +101,7 @@ não bugs — não as "corrija" silenciosamente.
 
 ## O que este skill NÃO faz
 
-Não executa o script (é JS de Code Editor GEE, sem runtime local). A ação de
+Não executa exports. O JS só roda no Code Editor; os `.py` o usuário roda
+(teste só leitura com `.getInfo()` é aceitável). A ação de
 rodar/exportar é sempre manual no navegador; este skill só edita/gera o
 código e ajuda a interpretar prints/erros que o usuário colar de volta.

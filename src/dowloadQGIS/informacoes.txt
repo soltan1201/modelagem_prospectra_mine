@@ -1,0 +1,17 @@
+ Método 2: Usar o plugin "Acervo SIG - CPRM" no QGIS (Recomendado)
+
+Se você usa QGIS, esta é a forma mais rápida e prática. O plugin Acervo SIG - CPRM permite pesquisar e baixar dados diretamente de dentro do software, sem precisar acessar o site.
+
+    Instale o plugin:
+
+        No QGIS, vá em Complementos > Gerenciar e Instalar Complementos.
+
+        Na aba Todos, pesquise por Acervo SIG - CPRM e clique em Instalar Complemento .
+
+    Abra o catálogo: Após a instalação, o plugin estará disponível na barra de ferramentas ou no menu Complementos. Clique para abri-lo .
+
+    Pesquise e baixe:
+
+        Use a busca por palavras-chave (ex: "geologia", "afloramento") ou navegue pelas categorias .
+
+        Selecione as camadas que deseja e clique em Baixar. O plugin cuidará de todo o processo, inclusive adicionando os dados diretamente ao seu projeto no QGIS .

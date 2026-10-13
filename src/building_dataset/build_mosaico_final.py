@@ -19,9 +19,13 @@ DN ≥ 254 — nas cenas zero-cloud era nuvem). A camada de maior prioridade com
 pixel válido fica por cima. Camada que não existe para a célula é pulada (o
 registro e a propriedade 'camadas' dizem quais entraram).
 
-Saída (ImageCollection DESTINO, conta superconta)
+Saída (ImageCollection aster-mosaico-final)
+  superconta      → DESTINOS['superconta'] (mapbiomas-brazil, CAATINGA)
+  qualquer outra  → DESTINOS['outras']     (projects/mapbiomas-arida/mine)
   aster-mosaico-final_<LxCy>; a união das células é o mosaico final
-  (ee.ImageCollection(DESTINO).mosaic()).
+  (ee.ImageCollection(destino).mosaic()). Com várias contas, as tasks são
+  distribuídas em rodízio (TASKS_POR_CONTA por conta). Célula já salva em
+  qualquer um dos dois destinos, ou com task ativa em alguma das contas, é pulada.
   Bandas: B01–B14 (INT32; reflectância × 1000, TIR em DN), 'origem' (1–4) e
   'swir_estimado' (1 nas origens 2 e 4).
 
@@ -42,10 +46,17 @@ log = logging.getLogger(__name__)
 # PARÂMETROS
 # ═══════════════════════════════════════════════════════════════════════════
 CAATINGA  = 'projects/mapbiomas-brazil/assets/LAND-COVER/COLLECTION-11/GENERAL/SAMPLES/CAATINGA'
-DESTINO   = f'{CAATINGA}/aster-mosaico-final'
+DESTINOS  = {
+    'superconta': f'{CAATINGA}/aster-mosaico-final',
+    'outras':     'projects/mapbiomas-arida/mine/aster-mosaico-final',
+}
 PREFIXO   = 'aster-mosaico-final_'
-CONTA     = 'superconta'
 VERSAO    = 'final_v1'
+
+# mesmas contas de tools/revisarTasksXconta.py (aquele script não é importável)
+CONTAS = ['caatinga01', 'caatinga02', 'caatinga03', 'caatinga04', 'caatinga05',
+          'solkan1201', 'solkanGeodatin', 'superconta', 'solkanCengine']
+TASKS_POR_CONTA = 2          # rodízio: troca de conta a cada N tasks
 
 PASTA_ZERO_CLOUD = f'{CAATINGA}/ASTER_0cloud'
 PASTA_SWIR_RF    = f'{CAATINGA}/ASTER_MOSAIC'
@@ -128,22 +139,90 @@ def montar(cel: dict, cam: dict[int, tuple]):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-def main():
-    if b.ARQ_CONTA_ATUAL.read_text().strip() != CONTA:
-        b.usar_conta(CONTA)
+# CONTAS
+# ═══════════════════════════════════════════════════════════════════════════
+def destino_da_conta(conta: str) -> str:
+    return DESTINOS['superconta'] if conta == 'superconta' else DESTINOS['outras']
+
+
+def ativar(conta: str) -> None:
+    if b.ARQ_CONTA_ATUAL.read_text().strip() != conta:
+        b.usar_conta(conta)
     else:
-        ee.Initialize(project=b.get_project_from_account(CONTA))
+        ee.Initialize(project=b.get_project_from_account(conta))
+
+
+def perguntar_contas() -> list[str]:
+    """Uma conta ou várias (rodízio), da lista CONTAS."""
+    print('\nContas disponíveis:')
+    for i, c in enumerate(CONTAS, 1):
+        print(f'  {i}) {c:15s} ({b.get_project_from_account(c)}) → {destino_da_conta(c)}')
+    while True:
+        resp = input('Contas para exportar (ex.: 4 ou 4,6,9) [8 = superconta]: ').strip() or '8'
+        try:
+            escolha = [CONTAS[int(x) - 1] for x in resp.replace(' ', '').split(',')]
+        except (ValueError, IndexError):
+            print(f'  → números de 1 a {len(CONTAS)}, separados por vírgula.')
+            continue
+        # a superconta não lê mapbiomas-arida (mosaic_aster_v4, mine/aster-mosaico-final):
+        # no rodízio, as tasks dela falhariam ao ler os semestrais v4 da arida
+        if 'superconta' in escolha and len(set(escolha)) > 1:
+            print('  → superconta não lê mapbiomas-arida: use a superconta sozinha ou só as outras contas.')
+            continue
+        return list(dict.fromkeys(escolha))
+
+
+def estado_geral(contas: list[str]) -> tuple[set[str], set[str]]:
+    """Células já salvas (nos dois destinos) e tasks ativas nas contas escolhidas.
+    Cria o destino de cada conta se faltar. Termina na primeira conta."""
+    salvos, ativas = set(), set()
+    destinos_lidos = set()
+    for conta in list(contas):
+        try:
+            ativar(conta)
+        except Exception as e:
+            raise SystemExit(f'{conta}: não foi possível inicializar o EE ({str(e)[:120]})')
+        # a task roda com as permissões da conta: sem ler as fontes, ela falharia
+        try:
+            for pasta in (PASTA_ZERO_CLOUD, PASTA_SWIR_RF):
+                ee.data.getAsset(pasta)
+        except ee.EEException:
+            log.warning(f'{conta}: sem leitura em {pasta} — conta fora do rodízio')
+            contas.remove(conta)
+            continue
+        ativas |= {t['description'] for t in ee.data.getTaskList()
+                   if t['state'] in ('READY', 'RUNNING')
+                   and t.get('description', '').startswith(PREFIXO)}
+        destino = destino_da_conta(conta)
+        if destino not in destinos_lidos:
+            salvos |= set(b.listar_destino(destino, criar=True))
+            destinos_lidos.add(destino)
+    if not contas:
+        raise SystemExit('Nenhuma conta escolhida lê as fontes do mosaico.')
+    ativar(contas[0])
+    # o outro destino também conta como "já salvo", se a conta conseguir ler
+    for destino in set(DESTINOS.values()) - destinos_lidos:
+        try:
+            salvos |= set(b.listar_destino(destino, criar=False))
+        except ee.EEException as e:
+            log.warning(f'{destino}: sem acesso ({str(e)[:80]}) — não conferido')
+    return salvos, ativas
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+def main():
+    contas = perguntar_contas()
+    salvos, ativas = estado_geral(contas)
     grid = b.ler_grid()
-    salvos = b.listar_destino(DESTINO, criar=True)
-    ativas = {t['description'] for t in ee.data.getTaskList()
-              if t['state'] in ('READY', 'RUNNING') and t.get('description', '').startswith(PREFIXO)}
 
     existentes = set()
     for pasta in (PASTA_ZERO_CLOUD, PASTA_SWIR_RF):
         existentes |= {f'{pasta}/{n}' for n in b.listar_destino(pasta, criar=False)}
     v4 = ee.ImageCollection([ee.Image(i) for i in ids_v4()])
 
-    print(f'\n══════ Mosaico final ASTER (prioridade 1 > 2 > 3 > 4) → {DESTINO} ══════')
+    print('\n══════ Mosaico final ASTER (prioridade 1 > 2 > 3 > 4) ══════')
+    for c in contas:
+        print(f'  conta {c} → {destino_da_conta(c)}')
     for o, d in CAMADAS.items():
         print(f'  origem {o}: {d}')
     celulas = b.perguntar_celulas(grid)
@@ -162,6 +241,7 @@ def main():
     n_sem = ee.List([cams[c][3][2] for c in pendentes]).getInfo()
 
     registro = []
+    disparadas, conta_ativa = 0, contas[0]
     for c, n3 in zip(pendentes, n_sem):
         cel = {'id': c, **grid[c]}
         cam = {o: v for o, v in cams[c].items() if o != 3 or n3 > 0}
@@ -188,23 +268,31 @@ def main():
                               'origem': 1, 'swir_estimado': 1},
             'versao': VERSAO,
         })
+        conta = contas[(disparadas // TASKS_POR_CONTA) % len(contas)]
+        if conta != conta_ativa:
+            ativar(conta)
+            conta_ativa = conta
+        destino = destino_da_conta(conta)
         task = ee.batch.Export.image.toAsset(
-            image=ee.Image(final), description=nomes[c], assetId=f'{DESTINO}/{nomes[c]}',
+            image=ee.Image(final), description=nomes[c], assetId=f'{destino}/{nomes[c]}',
             region=cel['geom'], crs=b.CRS_EXPORT, crsTransform=b.CRS_TRANSFORM, maxPixels=1e13,
             pyramidingPolicy={'.default': 'mean', 'origem': 'mode', 'swir_estimado': 'mode'})
         try:
             task.start()
         except ee.EEException as e:
             log.error(f'{nomes[c]}: falhou ao iniciar: {e}')
-            registro.append({**linha, 'status': f'erro_inicio: {str(e)[:80]}'})
+            registro.append({**linha, 'conta': conta, 'status': f'erro_inicio: {str(e)[:80]}'})
             continue
-        log.info(f'  task {task.id} → {DESTINO}/{nomes[c]}')
-        registro.append({**linha, 'status': 'exportando', 'task_id': task.id})
+        disparadas += 1
+        log.info(f'  [{conta}] task {task.id} → {destino}/{nomes[c]}')
+        registro.append({**linha, 'conta': conta, 'asset': f'{destino}/{nomes[c]}',
+                         'status': 'exportando', 'task_id': task.id})
 
     arq = b.PASTA / f'registro_mosaico_final_{datetime.now():%Y%m%d_%H%M}.csv'
     with open(arq, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=['celula_id', 'celula_nome', 'camadas', 'faltam',
-                                          'semestrais_2000_2008', 'status', 'task_id'], extrasaction='ignore')
+                                          'semestrais_2000_2008', 'conta', 'asset', 'status', 'task_id'],
+                           extrasaction='ignore')
         w.writeheader()
         w.writerows(registro)
     log.info(f'Registro → {arq}')

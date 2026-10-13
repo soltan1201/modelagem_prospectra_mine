@@ -6,6 +6,15 @@ Rodar/editar `src/modeling/estimate_swir_gee.py`, que treina
 search de hiperparâmetros, aplica ao mosaico final e exporta o resultado
 como asset.
 
+## Estado atual (2026-10-12)
+Caminho principal: `estimar_swir_rf_v2.py` (RF por célula, normalização OLS
+por cena) → `projects/mapbiomas-arida/mine/ASTER_MOSAIC_v2`. Pré-condições:
+`points_zeroCC_00_08` legível; `ASTER_0cloud_v2`/`ASTER_v5` da célula
+existem; CSV de pares e de coeficientes em `src/Dados/...` e
+`models/zero_cloud/`. Falha conhecida: treino grande demais →
+"Image.classify: Computed value is too large" (reduzir `N_MAX_TREINO`).
+As seções abaixo descrevem o GBT legado (`estimate_swir_gee.py`).
+
 ## Pré-condições
 - `ee.Initialize(project='mapbiomas-caatinga-cloud02')` deve suceder
   (mesma conta/projeto usado em `sample_quality_mosaic.py`).

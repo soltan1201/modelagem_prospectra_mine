@@ -1,6 +1,6 @@
 ---
 name: merge-mosaico-final
-description: Use when the user wants to merge all semestral ASTER mosaic assets into the final multi-temporal mosaic (MOSAICO_FINAL_ASTER_IRECE), check band/property consistency between the mosaic_aster and mosaic_aster_p2008 collections, or adjust the merge script. Triggers on "mosaico final", "merge_mosaic_semestral", "unir mosaicos semestrais", "MOSAICO_FINAL_ASTER_IRECE".
+description: Use when the user wants to merge all semestral ASTER mosaic assets into the final multi-temporal mosaic (MOSAICO_FINAL_ASTER_IRECE), check band/property consistency between the mosaic_aster and mosaic_aster_p2008 collections, or adjust the merge script. Triggers on "mosaico final", "merge_mosaic_semestral", "unir mosaicos semestrais", "MOSAICO_FINAL_ASTER_IRECE", "build_mosaico_final_v2", "aster-mosaico-final_v2", "origem 1-4".
 ---
 
 # Merge Mosaico Final (ASTER)
@@ -12,6 +12,25 @@ asset multitemporal, escolhendo pixel a pixel a melhor observação via
 `qualityMosaic('quality')`.
 
 Ver [SPEC.md](SPEC.md) para o contrato formal.
+
+## Pipeline atual: Python
+
+`src/building_dataset/build_mosaico_final_v2.py` (VERSAO `final_v2_seco`)
+substitui o JS. Por célula da grid 5 × 5, empilha 4 camadas por prioridade
+(maior por cima; pixel só vale com as 14 bandas e sem saturação):
+
+1. `ASTER_0cloud_v2` 2000–2008 (SWIR medido)
+2. `ASTER_MOSAIC_v2` zero_cloud 2009–2020 (SWIR estimado RF)
+3. `ASTER_v5` semestrais secos 2000–2008 (qualityMosaic, SWIR medido)
+4. `ASTER_MOSAIC_v2` semestral_v5 2009–2020 (SWIR estimado RF)
+
+Saída `projects/mapbiomas-arida/mine/aster-mosaico-final_v2/aster-mosaico-final_<LxCy>`,
+bandas B01–B14 + `origem` (1–4) + `swir_estimado`. Multi-conta (rodízio),
+superconta fora. `build_mosaico_final.py` (v1) usa as fontes antigas
+(`ASTER_0cloud`, `ASTER_MOSAIC`, `ASTER_v4`).
+
+Alternativa nova: `build_mosaico_unico.py` (skill `build-mosaico-unico`) —
+dois mosaicos base separados por SWIR, sem as 4 origens.
 
 ## Arquivo de referência
 

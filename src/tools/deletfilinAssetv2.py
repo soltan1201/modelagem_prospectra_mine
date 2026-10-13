@@ -11,7 +11,7 @@ from pathlib import Path
 # print(f"projetos selecionado >>> {projAccount} <<<")
 
 try:
-    ee.Initialize(project= 'ee-solkancengine17')
+    ee.Initialize(project= 'mapbiomas-caatinga-cloud04')
     print('The Earth Engine package initialized successfully!')
 except ee.EEException as e:
     print('The Earth Engine package failed to initialize!')
@@ -20,7 +20,8 @@ except:
     raise
 
 
-asset = "projects/mapbiomas-arida/mosaic_aster_p2008"
+# asset = "projects/mapbiomas-arida/mosaic_aster_p2008"
+asset = "projects/mapbiomas-arida/Barragem/validacao/imagensClassAgua"
 
 imgCol = ee.ImageCollection(asset)
 
@@ -31,7 +32,7 @@ for cc, idss in enumerate(lst_id):
     path_ = str(asset + '/' + idss)    
     print ("... eliminando ❌ ... item 📍{} : {}  ▶️ ".format(cc, idss))    
     try:
-        # ee.data.deleteAsset(path_)
+        ee.data.deleteAsset(path_)
         print(path_)
     except:
         print(" NAO EXISTE!")

@@ -4,6 +4,19 @@
 Produzir/editar um script GEE (JS, Code Editor) que gera o mosaico de
 qualidade ASTER de um semestre (`ano` + `mes`) e o exporta como asset INT16.
 
+## Estado atual (2026-10-12)
+Caminho principal: Python — `build_mosaicos_semestrais_v2.py` (VERSAO
+`v5`, jul–out, quality v6) → `projects/mapbiomas-arida/mine/ASTER_v5`, e
+`build_mosaicos_zero_cloud_v2.py` → `.../mine/ASTER_0cloud_v2`. O JS
+(`select_black_list_save_mosaicSem.js`) é legado/template. As seções
+abaixo valem para o JS; para os `.py`:
+- entradas: interativas (contas, anos, semestres, células, dry-run);
+- saídas: assets por ano × semestre × célula + CSV `registro_*` na pasta;
+- efeito colateral real: tasks GEE nas contas escolhidas — só o usuário
+  dispara; dedupe contra assets salvos e tasks ativas;
+- falha típica: conta sem leitura da origem/destino (superconta em
+  mapbiomas-arida) — o script descarta a conta, não contornar.
+
 ## Pré-condições
 - O usuário informa `ano` e, implícita ou explicitamente, o semestre
   (1º = jan-jun, 2º = jul-dez).

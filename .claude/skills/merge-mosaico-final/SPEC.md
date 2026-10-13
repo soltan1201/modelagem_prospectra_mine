@@ -4,6 +4,14 @@
 Editar/depurar o script que consolida os mosaicos semestrais em
 `projects/mapbiomas-arida/MOSAICO_FINAL_ASTER_IRECE`.
 
+## Estado atual (2026-10-12)
+Caminho principal: `build_mosaico_final_v2.py` → `projects/mapbiomas-arida/mine/aster-mosaico-final_v2`.
+Pré-condições do `.py`: existem `ASTER_0cloud_v2`, `ASTER_v5` e
+`ASTER_MOSAIC_v2` para a célula (camada ausente é pulada e registrada na
+propriedade `camadas`); conta escolhida lê e escreve em
+`projects/mapbiomas-arida/mine`. Efeito: tasks GEE (só o usuário dispara).
+As seções abaixo descrevem o JS legado.
+
 ## Pré-condições
 - Todos os mosaicos semestrais relevantes já foram exportados pela etapa 1
   (skill `build-mosaico-semestral`) e existem como assets em

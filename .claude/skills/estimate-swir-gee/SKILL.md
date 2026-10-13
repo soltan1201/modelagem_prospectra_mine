@@ -1,6 +1,6 @@
 ---
 name: estimate-swir-gee
-description: Use when the user wants to train GEE-side smileGradientTreeBoost classifiers to estimate SWIR bands, run/skip the manual grid search, or apply the trained models to the final ASTER mosaic and export the estimated SWIR asset. Triggers on "estimate_swir_gee", "smileGradientTreeBoost", "grid search GEE", "swir_estimated", "aplicar modelo ao mosaico final".
+description: Use when the user wants to estimate ASTER SWIR (B04-B09) in GEE — the current per-cell smileRandomForest scripts (estimar_swir_rf/_v2, with per-scene OLS normalization) or the legacy smileGradientTreeBoost path (grid search, apply to the final mosaic, export swir_estimated). Triggers on "estimate_swir_gee", "smileGradientTreeBoost", "grid search GEE", "swir_estimated", "aplicar modelo ao mosaico final", "estimar_swir_rf", "smileRandomForest", "normalização OLS por cena", "ASTER_MOSAIC_v2".
 ---
 
 # Estimate SWIR (GEE-side)
@@ -12,6 +12,27 @@ por banda SWIR alvo, diretamente com os pontos amostrados já como asset,
 depois aplica os 6 modelos ao mosaico final e exporta.
 
 Ver [SPEC.md](SPEC.md) para o contrato formal.
+
+## Caminho atual: Random Forest por célula (`estimar_swir_rf*.py`)
+
+O GBT abaixo é legado. O SWIR estimado em uso vem de
+`src/modeling/estimar_swir_rf.py` (v1) e `estimar_swir_rf_v2.py`
+(VERSAO `swir_rf_v3_seco`):
+- treino: `projects/mapbiomas-arida/mine/points_zeroCC_00_08` (pontos do
+  zero-cloud 2000–2008); um `smileRandomForest` (REGRESSION) por banda
+  B04–B09, features B01, B02, B3N, B10–B14; `TREINO='global'` ou
+  `'celula'` (com vizinhas); limite `N_MAX_TREINO=6000`
+  ("Computed value is too large");
+- hiperparâmetros: `models/zero_cloud/best_params.json` ou `RF_PARAMS`;
+- **normalização OLS por cena** (2009–2020 → 2000–2008) com a banda `data`;
+  coeficientes em `models/zero_cloud/normalizacao_ols_cena_coef.csv`;
+  cena com < `MIN_PONTOS_CENA` usa reta global. Sem normalização o teste
+  temporal deu R² negativo (TIR em DN carrega temperatura da data);
+- v2 entradas: `ASTER_0cloud_v2` (grupo `zero_cloud`, norm. `cena`) e
+  `ASTER_v5` (grupo `semestral_v5`, norm. `nenhuma`); saída
+  `projects/mapbiomas-arida/mine/ASTER_MOSAIC_v2/ASTER_MOSAIC_<grupo>_2009_2020_<LxCy>`
+  com banda `normalizacao` (0/1/2);
+- `rf.estimar(...)` é reutilizado por `build_mosaico_unico.py` (etapa 2).
 
 ## Arquivo de referência
 
