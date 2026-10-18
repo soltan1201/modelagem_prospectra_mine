@@ -34,6 +34,10 @@ O GBT abaixo é legado. O SWIR estimado em uso vem de
   com banda `normalizacao` (0/1/2);
 - `rf.estimar(...)` é reutilizado por `build_mosaico_unico.py` (etapa 2).
 
+Estado (2026-10-17): `ASTER_MOSAIC` (v1) com 50 assets (zero_cloud +
+semestral_v4, 25 células cada); `ASTER_MOSAIC_v2` não existe (v2 não
+rodado). Testes pendentes do modelo: `src/modeling/README.md` seção 5.
+
 ## Arquivo de referência
 
 [src/modeling/estimate_swir_gee.py](../../../src/modeling/estimate_swir_gee.py)

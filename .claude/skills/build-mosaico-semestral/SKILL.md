@@ -43,6 +43,9 @@ de cenas secas — diagnóstico: fenologia, não iluminação):
   (não lê nem escreve mapbiomas-arida). Ver skill `gee-contas-assets`.
 - interativo; o usuário roda sozinho. Não rodar export por conta própria.
 
+Estado (2026-10-17): `ASTER_v4` tem 548 assets e `ASTER_0cloud` 42;
+`ASTER_v5` e `ASTER_0cloud_v2` não existem (v2 nunca exportado).
+
 Para o mosaico único (zero-cloud + preenchimento, com/sem SWIR) ver a skill
 `build-mosaico-unico`.
 

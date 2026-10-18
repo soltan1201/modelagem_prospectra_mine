@@ -16,6 +16,10 @@ caatinga01–05, solkan1201, solkanGeodatin, solkanCengine
   outras num rodízio; scripts v2 a excluem.
 - `mapbiomas-brazil/.../CAATINGA` está `all_users_can_read`.
 - Conta ativa: `~/.config/earthengine/current_user.txt`.
+- Projeto `mapbiomas-brazil` como projeto EE (2026-10-17): caatinga01–05,
+  solkan1201 e superconta inicializam; solkanCengine falha (serviceusage);
+  solkanGeodatin inicializa mas não lê arida. Usado no rodízio de
+  `build_mosaico_unico.py`.
 - Teste só leitura sem trocar conta: `Credentials(None, refresh_token=...,
   client_id=d.get('client_id') or ee.oauth.CLIENT_ID, client_secret=...,
   token_uri=...)` a partir do arquivo da conta.

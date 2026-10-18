@@ -29,6 +29,12 @@ bandas B01–B14 + `origem` (1–4) + `swir_estimado`. Multi-conta (rodízio),
 superconta fora. `build_mosaico_final.py` (v1) usa as fontes antigas
 (`ASTER_0cloud`, `ASTER_MOSAIC`, `ASTER_v4`).
 
+Estado (2026-10-17): `aster-mosaico-final` (v1) 25/25 em
+`projects/mapbiomas-arida/mine`. `aster-mosaico-final_v2` e as fontes v2
+(`ASTER_v5`, `ASTER_0cloud_v2`, `ASTER_MOSAIC_v2`) não existem — scripts
+prontos, nunca exportados. Rodar v2 ou ficar no mosaico único é decisão
+do usuário em aberto.
+
 Alternativa nova: `build_mosaico_unico.py` (skill `build-mosaico-unico`) —
 dois mosaicos base separados por SWIR, sem as 4 origens.
 

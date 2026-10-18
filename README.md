@@ -1,300 +1,169 @@
+# Prospectra — modelagem mineral com ASTER (bloco Irecê, BA)
 
-🌟 Mosaico Multi-Temporal ASTER - Quality Score
-Script Google Earth Engine para criação de mosaico multi-temporal de alta qualidade utilizando imagens ASTER L1T, com seleção inteligente dos melhores pixels disponíveis em uma série temporal de mosaicos semestrais.
-📋 Índice
-    Visão Geral
-    Funcionalidades
-    Requisitos
-    Como Usar
-    Estrutura do Script
-    Bandas de Saída
-    Quality Score - Critérios
-    Exportação
-    Visualização
-    Notas Técnicas
+Pipeline em Google Earth Engine (Python `earthengine-api` + scripts JS do Code
+Editor) para montar um mosaico ASTER multiespectral livre de nuvem sobre o bloco
+de Irecê, estimar o SWIR que falta depois de 2008 e gerar mapas de
+favorabilidade para fosfato (Maxent), com tratamento explícito da incerteza.
 
-🌍 Visão Geral
-Este script processa uma coleção de mosaicos ASTER semestrais (2002-2008) e gera um mosaico final otimizado selecionando pixel a pixel a melhor observação disponível, eliminando automaticamente:
-    ☁️ Nuvens residuais
-    🌑 Sombras de nuvens
-    🔲 Bordas de nuvem (artefatos de alta textura)
-    📊 Pixels saturados ou inválidos
+- **Área:** retângulo -44.4605 / -14.7908 / -39.2035 / -9.4165, processado por
+  célula da grid 5 × 5 (`grid_irece_5x5_solape100`, células `L1C1`…`L5C5`).
+- **Sensor:** ASTER L1T (2000–2020). O SWIR (B04–B09) parou em 2008-S2; de
+  2009 em diante só há VNIR + TIR.
+- **Convenção dos dados:** VNIR e SWIR em reflectância TOA × 1000, TIR em DN,
+  INT32, 15 m, EPSG:4326. `saturado = 1` marca VNIR com DN ≥ 254.
+- **Assets:** `projects/mapbiomas-arida/mine/` (todas as contas exceto a
+  superconta escrevem lá).
 
-O resultado é uma imagem contínua de alta qualidade para mapeamento geológico, prospecção mineral e análise ambiental.
-⚡ Funcionalidades
-🎯 Quality Score Multi-Critério
+Lista de tarefas para o Kanri (a fazer / em processo / feitas):
+[docs/kanban_kanri.md](docs/kanban_kanri.md).
 
-Sistema de pontuação que avalia cada pixel baseado em 5 critérios:
-Critério	Peso	Descrição
-Brilho (NIR)	30%	Penaliza pixels escuros (sombras)
-Textura (GLCM)	25%	Penaliza bordas de nuvem (alto contraste)
-NDVI	20%	Penaliza valores extremos (nuvens/vegetação densa)
-SWIR Válido	15%	Garante valores dentro do range esperado
-Variância Local	10%	Penaliza pixels isolados (ruído)
+## Fluxograma das etapas
 
-🔍 Detecção de Pixels Ruins
-Máscara automática para remover:
-    Sombras residuais (NIR < 0.06)
-    Nuvens residuais (Verde > 0.35 + SWIR > 0.4)
-    Bordas de nuvem (Contraste GLCM > 180)
-    Pixels saturados
+Cores: verde = concluído, amarelo = em processo, cinza = a fazer, branco
+tracejado = alternativa/legado.
 
-📊 Banda de Frequência
-Cria uma banda adicional que indica quantos mosaicos semestrais contribuíram para cada pixel final:
-    Valores altos: Área com muitas observações (alta confiabilidade)
-    Valores baixos: Área com poucas observações (menor confiabilidade)
+```mermaid
+flowchart TD
+    classDef feito fill:#c8e6c9,stroke:#2e7d32,color:#1b1b1b
+    classDef andamento fill:#fff3c4,stroke:#b58900,color:#1b1b1b
+    classDef afazer fill:#eceff1,stroke:#607d8b,color:#1b1b1b
+    classDef alternativa fill:#ffffff,stroke:#90a4ae,stroke-dasharray:4 3,color:#1b1b1b
 
-🗺️ Índices Geológicos
-Calcula automaticamente índices para análise mineral:
-Índice	Fórmula	Aplicação
-AlOH_Clay	(B05 + B07) / (2 × B06)	Detecção de Argilas (Caulinita)
-Carbonate	B08 / B06	Detecção de Carbonatos
-Ferric_Fe	B02 / B01	Óxidos de Ferro (Hematita/Goethita)
-NDVI	(B3N - B02) / (B3N + B02)	Índice de Vegetação
-SAVI	1.5 × (B3N - B02) / (B3N + B02 + 0.5)	Vegetação (corrigido para solo)
+    subgraph E0["0 · Base"]
+        L1T[ASTER L1T 2000–2020]:::feito
+        GRID[Grid 5×5 + área de estudo]:::feito
+        LISTAS[Blacklist + lista zero-cloud<br/>visualizar_zero_cloud.js]:::feito
+        SAT[Piloto saturação VNIR × Landsat<br/>saturados = nuvem]:::feito
+    end
 
-💾 Exportação Otimizada (16-bit)
-Conversão automática para INT16 reduzindo em 50% o espaço de armazenamento:
-Tipo de Dado	Range	Escala	Formato
-Reflectância	0-1.5	× 10000	INT16
-Índices	-1 a 2	× 10000	INT16
-Frequência	1-N	× 1	INT16
-Quality Score	0-1	× 10000	INT16
+    subgraph E1["1 · Mosaicos v1 (ano todo)"]
+        V4[Semestrais v4<br/>ASTER_v4]:::feito
+        ZC[Zero-cloud 00–08 / 09–20<br/>ASTER_0cloud]:::feito
+    end
 
-📈 Análise de Contribuição
-Gera relatório automático com:
-    Estatísticas do Quality Score (média, desvio padrão)
-    Contribuição de cada mosaico semestral
-    Número de pixels válidos por período
-    🔧 Preenchimento de Gaps
+    subgraph E2["2 · Modelo de SWIR"]
+        PAR[Pontos pareados zero-cloud<br/>00–08 × 09–20]:::feito
+        NB[Notebook PLS × XGBoost × RF<br/>RF escolhido + norm. OLS por cena]:::feito
+        TST[Testes pendentes: época, mesma estação,<br/>sem TIR, validação espacial]:::afazer
+        RF[estimar_swir_rf.py<br/>ASTER_MOSAIC 2009–2020]:::feito
+    end
 
-Interpolação espacial opcional para preencher pixels sem dados usando filtro Gaussiano.
-📦 Requisitos
-Assets Necessários
-javascript
-    // Coleção de mosaicos semestrais ASTER (2002-2008)
-    var id_asset_mosaicos = 'projects/seu-projeto/assets/mosaic_aster';
+    subgraph E3["3 · Mosaico final"]
+        FIN[build_mosaico_final.py<br/>aster-mosaico-final 25/25<br/>origem 1–4 + swir_estimado]:::feito
+        V2[Cadeia v2 seco jul–out<br/>ASTER_v5 · 0cloud_v2 · MOSAIC_v2 · final_v2<br/>scripts prontos, não exportados]:::alternativa
+        UB1[Mosaico único etapa 1<br/>com_swir 25/25 · sem_swir 21/25]:::andamento
+        UB2[Mosaico único etapa 2<br/>sem_swir_estimado 21/25]:::andamento
+        DEC[Mosaico único etapa 3<br/>com_swir + sem_swir, SWIR re-estimado<br/>retas OLS entre os mosaicos + RF<br/>ASTER_mosaico_unico_final]:::andamento
+    end
 
-Bandas Esperadas
-Cada mosaico semestral deve conter as bandas:
-    Banda	Descrição	Resolução
-    B01	Verde (556 nm)	15m
-    B02	Vermelho (661 nm)	15m
-    B3N	NIR (807 nm)	15m
-    B04	SWIR 1 (1656 nm)	30m
-    B05	SWIR 2 (2167 nm)	30m
-    B06	SWIR 3 (2209 nm)	30m
-    B07	SWIR 4 (2263 nm)	30m
-    B08	SWIR 5 (2336 nm)	30m
-    B09	SWIR 6 (2395 nm)	30m
-🚀 Como Usar
-1. Configuração Inicial
-javascript
+    subgraph E4["4 · Dados complementares (Acervo SGB/CPRM)"]
+        ACV[Catálogo + download + .grd → GeoTIFF]:::feito
+        ING[acervo_cprm no GEE<br/>gama eU, mag, litologia,<br/>estruturas, ocorrências, P2O5]:::feito
+        STK[Pilha de covariáveis por célula<br/>aerogeofísica + geologia + MDE]:::afazer
+    end
 
-    // Definir área de estudo (coordenadas do retângulo)
-    var list_coord = [
-        [-44.46, -14.79],  // NW
-        [-39.20, -14.79],  // NE
-        [-39.20, -9.41],   // SE
-        [-44.46, -9.41]    // SW
-    ];
+    subgraph E5["5 · Favorabilidade e incerteza"]
+        HIP[Hipóteses de depósito H1–H3]:::afazer
+        MAX[maxent_fosfato.py<br/>amostras → validação por célula → mapa]:::andamento
+        ENS[Ensemble Maxent<br/>P média, σ, P10/P50/P90, entropia]:::afazer
+        RSK[Mapa de confiança +<br/>curva área-favorabilidade]:::afazer
+        CMP[Campo em rodadas<br/>alvos P≈0,5 e σ alto]:::afazer
+        ALV[Relatório de alvos]:::afazer
+    end
 
-    // ID da coleção de mosaicos
-    var id_asset_mosaicos = 'projects/seu-projeto/assets/mosaic_aster';
+    L1T --> V4 & ZC
+    LISTAS --> V4 & ZC & UB1
+    GRID --> V4 & ZC & UB1
+    SAT -.-> UB1
+    ZC --> PAR --> NB --> RF
+    NB -.-> TST -.-> RF
+    V4 --> RF
+    ZC --> FIN
+    V4 --> FIN
+    RF --> FIN
+    L1T -.-> V2 -.-> DEC
+    L1T --> UB1 --> UB2 --> DEC
+    UB1 -- com_swir --> DEC
+    RF -. rf.estimar .-> UB2
+    FIN --> MAX
+    DEC --> MAX
+    ACV --> ING --> STK --> MAX
+    ING -- ocorrências fosfato --> MAX
+    HIP --> MAX --> ENS --> RSK --> CMP --> ALV
+    CMP -- presenças / ausências --> ENS
+```
 
-2. Executar Processamento
-javascript
-    // O script automaticamente:
-    // 1. Carrega todos os mosaicos semestrais
-    // 2. Calcula Quality Score para cada pixel
-    // 3. Seleciona os melhores pixels
-    // 4. Gera índices geológicos
-    // 5. Exporta resultado
+O ciclo da etapa 5 (ensemble → confiança → campo → reassimilação) segue o plano
+de [docs/analise_fluxo_prospeccao_e_plano_irece.md](docs/analise_fluxo_prospeccao_e_plano_irece.md)
+(fases 0–5).
 
-3. Visualizar Resultados
+## Estado (2026-10-17)
 
-O script adiciona automaticamente as seguintes camadas ao mapa:
+| Coleção em `projects/mapbiomas-arida/mine/` | Script | Situação |
+|---|---|---|
+| `ASTER_v4` | `build_mosaicos_semestrais.py` | 548 semestrais por célula |
+| `ASTER_0cloud` | `build_mosaicos_zero_cloud.py` | 42 (células sem cenas puladas) |
+| `ASTER_MOSAIC` | `modeling/estimar_swir_rf.py` | 50 (zero_cloud + semestral_v4, 2009–2020) |
+| `aster-mosaico-final` | `build_mosaico_final.py` | 25/25 |
+| `ASTER_v5`, `ASTER_0cloud_v2`, `ASTER_MOSAIC_v2`, `aster-mosaico-final_v2` | scripts `_v2` | não existem (nunca exportados) |
+| `ASTER_mosaico_unico_base` | `build_mosaico_unico.py` etapa 1 | com_swir 25/25; sem_swir 21/25 (L3C2 rodando, L3C3–C5 na fila em solkanCengine) |
+| `ASTER_mosaico_unico` | `build_mosaico_unico.py` etapa 2 | 21/25 (faltam L3C2–L3C5) |
+| `ASTER_mosaico_unico_final` | `build_mosaico_unico.py` etapa 3 | código pronto e testado (só leitura); não exportado |
+| `acervo_cprm/` | `dowloadQGIS/exportar_acervo_gee.py` | 10 assets |
+| `pontos_fosfato`, `maxent_fosfato_amostras_teste_zero_cloud_2000_2008` | `modeling/maxent_fosfato.py` | teste sem presenças; refazer com mosaico final |
 
-    🌟 MOSAICO FINAL - RGB Natural: Composição colorida verdadeira
+## Estrutura
 
-    🌟 MOSAICO FINAL - SWIR Geologia: Falsa-cor para geologia
+```
+src/
+├── building_dataset/    mosaicos (semestrais, zero-cloud, final, único), listas de cenas,
+│                        pontos pareados, amostragem, análises de histograma e saturação
+├── modeling/            SWIR (notebook de treino, estimar_swir_rf*.py), Maxent fosfato,
+│                        README.md = diário dos testes de modelagem
+├── dowloadQGIS/         Acervo SIG SGB/CPRM: catálogo, download, .grd → tif, envio ao GEE
+│                        (ACERVO_CPRM_IRECE.md = documento central)
+├── features_process/    biblioteca de índices espectrais (JS)
+├── show_mosaics/        visualizadores do Code Editor
+├── tools/               contas, tasks, cópia/remoção de assets, cota
+├── revision_blibiografic/  triagem Scopus
+├── Dados/               saídas locais (CSV, figuras) — maioria fora do git
+├── gee_tools.py         troca de conta, tasks
+└── configure_account_projects_ee.py   conta → projeto GEE
+docs/                    plano de prospecção sob incerteza + textos de referência
+resumo_metodologia.md    resumo da metodologia
+```
 
-    🌟 Al-OH (Argilas): Índice de argilominerais
+Os scripts de export são interativos (perguntam contas, células, conferir ou
+exportar), pulam assets já salvos e tasks ativas, e gravam
+`registro_<etapa>_<data>.csv` na pasta do script.
 
-    📊 Frequência: Número de observações por pixel
+## Skills do Claude Code (`.claude/skills/`)
 
-    📈 Quality Score Final: Pontuação de qualidade
+| Skill | Cobre |
+|---|---|
+| `build-mosaico-semestral` | semestrais v4/v5, zero-cloud, blacklist, quality score |
+| `build-mosaico-unico` | mosaico único com/sem SWIR, etapas 1 e 2 |
+| `merge-mosaico-final` | mosaico final por prioridade (v1/v2) |
+| `estimate-swir-gee` | SWIR por RF por célula (e o GBT legado) |
+| `train-swir-models` | treino local PLS/XGBoost/GPR (script antigo) |
+| `sample-mosaico-dataset` | amostragem de pontos a 30 m |
+| `add-indice-espectral` | novos índices espectrais |
+| `acervo-cprm` | dados SGB/CPRM até o GEE |
+| `gee-contas-assets` | rodízio de contas, tasks, cópia e remoção de assets |
+| `triagem-bibliografica` | filtro de artigos Scopus |
 
-4. Exportar Resultados
-javascript
+Cada skill tem `SKILL.md` (como usar) e `SPEC.md` (contrato).
 
-    // Asset (para uso no GEE)
-    Export.image.toAsset({
-        image: mosaico_16bit,
-        description: 'MOSAICO_FINAL_ASTER_2002_2008',
-        assetId: 'MOSAICO_FINAL_ASTER_2002_2008',
-        region: area_estudo,
-        scale: 15,
-        maxPixels: 1e13
-    });
+## Requisitos
 
-    // Metadados (CSV)
-    Export.table.toDrive({
-        collection: metadados,
-        description: 'METADADOS_MOSAICO_FINAL_2002_2008',
-        folder: 'ASTER_Metadados'
-    });
+- Python 3 com `earthengine-api`, `pandas`, `numpy`, `scikit-learn`, `joblib`
+  (o `xgboost` só para o notebook de treino).
+- Credenciais GEE por conta em `~/.config/earthengine/<conta>/credentials`
+  (ver `src/configure_account_projects_ee.py`). A superconta
+  (`mapbiomas-brazil`) não lê nem escreve `mapbiomas-arida`.
+- Envio do acervo ao GEE: bucket `gs://cengine17-acervo-cprm`
+  (`src/dowloadQGIS/GUIA_GCLOUD_BUCKET_GEE.md`).
 
-🏗️ Estrutura do Script
-text
+## Licença
 
-📁 Script Principal
-├── 📐 1. Parâmetros e Configuração
-│   ├── Área de estudo
-│   └── Bandas para processamento
-│
-├── 📂 2. Carregar Mosaicos Semestrais
-│   └── ImageCollection do Asset
-│
-├── 🧮 3. Funções de Processamento
-│   ├── calcularQualityScore()      ← Score multi-critério
-│   ├── detectarPixelsRuins()       ← Máscara de artefatos
-│   └── adicionarIndicesGeo()       ← Índices minerais
-│
-├── 🔄 4. Processamento da Coleção
-│   ├── Aplicar Quality Score
-│   ├── Detectar pixels ruins
-│   └── Adicionar timestamp
-│
-├── 🎯 5. Quality Mosaic Multi-Temporal
-│   └── qualityMosaic('quality_score')
-│
-├── 📊 6. Pós-Processamento
-│   ├── Preencher gaps (opcional)
-│   ├── Adicionar índices
-│   └── Banda de frequência
-│
-├── 👁️ 7. Visualização
-│   ├── RGB Natural
-│   ├── SWIR Geologia
-│   ├── Índices minerais
-│   └── Métricas de qualidade
-│
-└── 💾 8. Exportação
-    ├── Converter para 16-bit
-    ├── Exportar para Asset
-    └── Exportar metadados
-
-📊 Bandas de Saída
-    Bandas Espectrais (Reflectância TOA)
-    Banda	Nome	Range	Escala
-    B01	AST_Green_556nm	0-1.5	×10000
-    B02	AST_Red_661nm	0-1.5	×10000
-    B3N	AST_NIR_807nm	0-1.5	×10000
-    B04	AST_SWIR1_1656nm	0-1.5	×10000
-    B05	AST_SWIR2_2167nm_AlOH	0-1.5	×10000
-    B06	AST_SWIR3_2209nm_Ref	0-1.5	×10000
-    B07	AST_SWIR4_2263nm_AlMgOH	0-1.5	×10000
-    B08	AST_SWIR5_2336nm_CO3	0-1.5	×10000
-    B09	AST_SWIR6_2395nm	0-1.5	×10000
-    Índices Calculados
-    Banda	Descrição	Range Típico
-    NDVI	Vegetation Index	-1 a +1
-    AlOH_Clay	Índice de Argilas	0.8-1.4
-    Carbonate	Índice de Carbonatos	0.5-1.5
-    Ferric_Fe	Óxidos de Ferro	0.5-2.0
-    SAVI	Soil Adjusted VI	-1 a +1
-    Bandas de Qualidade
-    Banda	Descrição	Range
-    quality_score	Pontuação do pixel (0-1)	0-10000
-    frequency	Nº de observações	1-N
-    timestamp	Data da observação (ms)	-
-
-📐 Quality Score - Critérios
-Fórmula Completa
-text
-Quality = (Brilho × 0.30) + (Textura × 0.25) + (NDVI × 0.20) + (SWIR × 0.15) + (Variância × 0.10)
-
-Interpretação dos Valores
-Score	Classificação	Significado
-    0.8 - 1.0	⭐⭐⭐⭐⭐ Excelente	Sem nuvens/sombras, textura ideal
-    0.5 - 0.8	⭐⭐⭐⭐ Bom	Pequenos artefatos, ainda utilizável
-    0.2 - 0.5	⭐⭐⭐ Regular	Sombras leves ou bordas de nuvem
-    0.0 - 0.2	⭐⭐ Ruim	Nuvens/sombras fortes (descartado)
-
-💾 Exportação
-Para Google Earth Engine Asset
-javascript
-
-    // Uso posterior no GEE
-    var mosaico = ee.Image('projects/seu-projeto/assets/MOSAICO_FINAL_ASTER_2002_2008');
-
-    // Converter de volta para float
-    var reflectancia = mosaico.select(['B01','B02','B3N','B04','B05','B06','B07','B08','B09'])
-        .divide(10000).float();
-
-    var indices = mosaico.select(['NDVI','AlOH_Clay','Carbonate','Ferric_Fe','SAVI'])
-        .divide(10000).float();
-
-    var quality = mosaico.select('quality_score').divide(10000).float();
-
-Para Google Drive
-    Formato: GeoTIFF (Asset) ou CSV (Metadados)
-    Resolução: 15 metros
-    Projeção: Mantida do mosaico original
-    Compressão: Automática (GEE)
-
-👁️ Visualização
-Parâmetros Recomendados
-    Composição	Bandas	Min	Max	Gamma
-    RGB Natural	B3N, B02, B01	0.05	0.35	1.4
-    SWIR Geologia	B04, B06, B3N	0.10	0.50	1.2
-    Al-OH Clay	AlOH_Clay	0.80	1.40	1.0
-    Frequência	frequency	1	N	1.0
-    Quality Score	quality_score	0	1	1.0
-    Paletas de Cor
-    javascript
-
-    // Argilas
-    palette: ['blue', 'cyan', 'green', 'yellow', 'red']
-
-    // Frequência
-    palette: ['red', 'orange', 'yellow', 'green', 'darkgreen']
-
-    // Quality Score
-    palette: ['red', 'yellow', 'green']
-
-    // NDVI
-    palette: ['brown', 'yellow', 'green']
-
-🔬 Notas Técnicas
-Performance
-    Tempo de processamento: ~10-30 minutos (depende da área)
-    Memória: Otimizado para áreas grandes (até 100.000 km²)
-    Escala: 15m (VNIR) / 30m (SWIR upsampled)
-
-Limitações Conhecidas
-    SWIR pós-2008: ASTER SWIR parou de funcionar em 2008
-    Geometria de iluminação: Sombras podem persistir em áreas montanhosas
-    Nuvens persistentes: Áreas com cobertura de nuvens >90% podem ter gaps
-
-Melhorias Futuras
-    Integração com Landsat para preencher gaps SWIR
-    Correção atmosférica DOS (Dark Object Subtraction)
-    BRDF correction para normalizar ângulos de visada
-    Machine Learning para detecção de nuvens
-
-📝 Referências
-    ASTER L1T: NASA LP DAAC
-    Índice Al-OH: Rowan & Mars (2003) - Lithologic mapping in the Mountain Pass, California area using ASTER data
-    Quality Mosaic: Google Earth Engine Documentação
-
-👥 Contribuição
-Script desenvolvido para processamento de dados ASTER com foco em mapeamento geológico e prospecção mineral.
-
-Projeto: Prospectra 4.0
-Autores: [Seu Nome]
-Data: 2026
-Versão: 1.0.0
-📄 Licença
-Este script é distribuído sob licença MIT. Consulte o arquivo LICENSE para mais detalhes.
+Ver [LICENSE](LICENSE).

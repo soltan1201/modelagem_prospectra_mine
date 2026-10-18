@@ -31,10 +31,11 @@ mosaico final por prioridade                         building_dataset/build_mosa
 inferência de materiais                              maxent_fosfato.py (bandas + índices + GLCM)
 ```
 
-**Estado (2026-10-12):** notebook completo rodado (RF R² teste 0,94–0,96);
-normalização por cena implementada no `estimar_swir_rf.py`; `ASTER_MOSAIC` e
-`aster-mosaico-final` ainda vazios (falta exportar); Maxent aguarda o mosaico
-final.
+**Estado (2026-10-17):** notebook completo rodado (RF R² teste 0,94–0,96);
+normalização por cena implementada no `estimar_swir_rf.py`; `ASTER_MOSAIC`
+(50 assets) e `aster-mosaico-final` (25/25) exportados; mosaico único
+(`building_dataset/build_mosaico_unico.py`) com 21/25 células estimadas; Maxent
+aguarda a escolha do mosaico final (`ASSET_MOSAICO` vazio).
 
 ---
 
