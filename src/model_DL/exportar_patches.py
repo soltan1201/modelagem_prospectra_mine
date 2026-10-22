@@ -57,7 +57,9 @@ validação que vão para o teste. Para um teste independente, refazer os mapas
 com PAPEIS = ['treino'] numa coleção separada e apontar ASSET_FAV para ela.
 
 Uso: python exportar_patches.py   (1 = só sortear e gravar índice/divisão;
-                                   2 = sortear e baixar os patches)
+                                   2 = sortear e baixar os patches;
+                                   3 = apagar os .npz existentes e baixar de novo,
+                                       com confirmação digitando 'apagar')
 """
 
 import json
@@ -411,6 +413,25 @@ def arquivo_modelo(modelo, cel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+def apagar_patches():
+    """Apaga os .npz de modelo_*/ (e índice/divisão antigos) depois de confirmar."""
+    arquivos = sorted(PASTA_SAIDA.glob('modelo_*/patches_*.npz'))
+    extras = [a for a in (PASTA_SAIDA / 'indice_patches.csv', PASTA_SAIDA / 'divisao.json') if a.exists()]
+    if not arquivos and not extras:
+        print('Nada para apagar.')
+        return True
+    tamanho = sum(a.stat().st_size for a in arquivos) / 1e9
+    print(f'\nVai apagar {len(arquivos)} arquivos .npz ({tamanho:.2f} GB) em {PASTA_SAIDA}/modelo_*/'
+          f' e {len(extras)} arquivo(s) de índice/divisão. Não dá para desfazer.')
+    if input("Digite 'apagar' para confirmar: ").strip().lower() != 'apagar':
+        print('Cancelado — nada foi apagado.')
+        return False
+    for a in arquivos + extras:
+        a.unlink()
+    print(f'{len(arquivos) + len(extras)} arquivos apagados.')
+    return True
+
+
 def main():
     ee.Initialize(project=PROJETO_EE)
     PASTA_SAIDA.mkdir(parents=True, exist_ok=True)
@@ -419,8 +440,13 @@ def main():
         log.warning(f'{ASSET_FAV} foi treinado com todos os pontos (papeis = None): o teste não é '
                     'independente. Ver docstring.')
 
-    print('\n  1) só sortear (índice + divisão, sem baixar)\n  2) sortear e baixar os patches')
+    print('\n  1) só sortear (índice + divisão, sem baixar)\n  2) sortear e baixar os patches'
+          '\n  3) APAGAR os patches existentes, sortear e baixar de novo')
     acao = input('Opção [1]: ').strip() or '1'
+    if acao == '3':
+        if not apagar_patches():
+            return
+        acao = '2'
 
     grid = ler_grid()
     pimg = imagem_p()
