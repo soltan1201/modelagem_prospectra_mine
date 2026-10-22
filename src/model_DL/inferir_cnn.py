@@ -24,14 +24,23 @@ Saída (--saida, padrão <run>/mapas_passo<k>/)
                  matriz e a geotransformação.
   Para juntar: gdalbuildvrt mapa.vrt p_*.tif
 
+Modo pedaços (--tiles, recomendado para o mapa inteiro)
+  Lê os GeoTIFFs de canais de baixar_tiles.py (sem GEE), prevê pedaço a pedaço
+  (--sub divide o pedaço se faltar memória; --lote controla a GPU) e grava
+  <saida>/pedacos/<LxCy>/p_<LxCy>_r<i>c<j>.tif e, com os 36 prontos,
+  <saida>/p_<LxCy>.tif — UInt16, p × 10000, 0 = sem dado (convenção do
+  favorabilidade_ml), prontos para subir_predicao_gee.py.
+
 Uso
-  python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_016_64px_20261023_0900
-  python inferir_cnn.py --run <pasta> --passo 1 --celulas L2C3,L3C3
+  python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 1
+  python inferir_cnn.py --run <pasta> --tiles padrao --passo 3 --celulas L2C3,L3C3
+  python inferir_cnn.py --run <pasta> --passo 3 --celulas L2C3      # sem pedaços: baixa do GEE
 """
 
 import argparse
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -130,7 +139,7 @@ def prever_bloco(x, modelos, patch, passo, lote, dispositivo):
             jan = faixa.unfold(2, patch, 1)[:, :, cols_t].permute(2, 0, 1, 3)  # (n, C, patch, patch)
             saida = []
             for k in range(0, len(colunas), lote):
-                with torch.no_grad(), torch.autocast(dispositivo.type, enabled=dispositivo.type == 'cuda'):
+                with torch.no_grad(), tc.autocast(dispositivo, tc.tipo_amp(dispositivo)):   # bf16 se houver
                     saida.append(torch.sigmoid(m['modelo'](jan[k:k + lote].contiguous())).float())
             p[i] += torch.cat(saida)
     p = p / len(modelos)                                                  # média do ensemble
@@ -188,6 +197,104 @@ def gravar(arquivo, p, gt):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
+# MODO PEDAÇOS (--tiles): canais já baixados por baixar_tiles.py, sem GEE
+# ═══════════════════════════════════════════════════════════════════════════
+def inferir_tile(arquivo, canais, modelos, patch, passo, lote, dispositivo, sub=1):
+    """Um GeoTIFF de canais (com borda) → p do miolo e a geotransformação da saída."""
+    import rasterio
+    with rasterio.open(arquivo) as d:
+        nomes = list(d.descriptions)
+        if nomes != list(canais):
+            raise SystemExit(f'{arquivo.name}: canais {nomes} ≠ canais do modelo {canais} '
+                             '(baixe os pedaços do mesmo modelo: baixar_tiles.py --modelo …)')
+        x = d.read().astype(np.float32)
+        borda = int(d.tags().get('borda', patch // 2))
+        tr = d.transform
+    corte = borda - patch // 2                 # borda maior que o meio patch (ex.: modelo de 32 px)
+    if corte < 0:
+        raise SystemExit(f'Borda dos pedaços ({borda} px) menor que meio patch ({patch // 2} px).')
+    if corte:
+        x = x[:, corte:x.shape[1] - corte, corte:x.shape[2] - corte]
+    H, W = x.shape[1] - patch, x.shape[2] - patch
+    if sub <= 1:
+        p = prever_bloco(x, modelos, patch, passo, lote, dispositivo)
+    else:                                      # subdivide o miolo se faltar memória
+        p = np.full((math.ceil(H / passo), math.ceil(W / passo)), np.nan, np.float32)
+        tam = math.ceil(math.ceil(H / sub) / passo) * passo
+        tam_c = math.ceil(math.ceil(W / sub) / passo) * passo
+        for r in range(0, H, tam):
+            for c in range(0, W, tam_c):
+                h, w = min(tam, H - r), min(tam_c, W - c)
+                pb = prever_bloco(x[:, r:r + h + patch, c:c + w + patch], modelos, patch, passo, lote, dispositivo)
+                p[r // passo: r // passo + pb.shape[0], c // passo: c // passo + pb.shape[1]] = pb
+    res = tr.a
+    x_miolo, y_miolo = tr.c + borda * res, tr.f - borda * res
+    deslocamento = (passo - 1) / 2 * res
+    gt = (x_miolo - deslocamento, passo * res, 0.0, y_miolo + deslocamento, 0.0, -passo * res)
+    return p, gt
+
+
+def gravar_uint16(arquivo, p, gt):
+    """p × 10000 em UInt16 (0 = sem dado), mesma convenção do favorabilidade_ml no GEE."""
+    import rasterio
+    from rasterio.transform import Affine
+    v = np.where(np.isfinite(p), np.clip(np.round(p * 10000), 1, 10000), 0).astype(np.uint16)
+    with rasterio.open(arquivo, 'w', driver='GTiff', width=v.shape[1], height=v.shape[0], count=1,
+                       dtype='uint16', crs='EPSG:4326', transform=Affine.from_gdal(*gt), nodata=0,
+                       compress='deflate', tiled=True, blockxsize=256, blockysize=256) as d:
+        d.write(v, 1)
+        d.set_band_description(1, 'probability')
+        d.update_tags(escala='p x 10000', nodata='0')
+
+
+def juntar(arquivos, saida):
+    """Junta os pedaços de uma célula num GeoTIFF só (UInt16, 0 = sem dado)."""
+    import rasterio
+    from rasterio.merge import merge
+    fontes = [rasterio.open(a) for a in arquivos]
+    try:
+        mos, tr = merge(fontes, nodata=0)
+        perfil = fontes[0].profile.copy()
+    finally:
+        for f in fontes:
+            f.close()
+    perfil.update(width=mos.shape[2], height=mos.shape[1], transform=tr)
+    with rasterio.open(saida, 'w', **perfil) as d:
+        d.write(mos)
+        d.set_band_description(1, 'probability')
+        d.update_tags(escala='p x 10000', nodata='0')
+
+
+def rodar_tiles(args, modelos, canais, patch, modelo_dados, pasta, dispositivo):
+    padrao = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn')) / f'canais_{modelo_dados}'
+    raiz = padrao if args.tiles == 'padrao' else Path(args.tiles)
+    celulas = sorted(p.name for p in raiz.iterdir() if p.is_dir())
+    pedidas = [c.strip().upper() for c in args.celulas.split(',') if c.strip()]
+    celulas = [c for c in celulas if not pedidas or c in pedidas]
+    if not celulas:
+        raise SystemExit(f'Nenhuma pasta de célula em {raiz} — rode baixar_tiles.py --modelo {modelo_dados}')
+    print(f'pedaços: {raiz} · {len(celulas)} células')
+    for cel in celulas:
+        entradas = sorted((raiz / cel).glob(f'{cel}_r*c*.tif'))
+        dest = pasta / 'pedacos' / cel
+        dest.mkdir(parents=True, exist_ok=True)
+        t0 = time.time()
+        for arq in entradas:
+            saida = dest / f'p_{arq.name}'
+            if saida.exists():
+                continue
+            p, gt = inferir_tile(arq, canais, modelos, patch, args.passo, args.lote, dispositivo, args.sub)
+            gravar_uint16(saida, p, gt)
+        feitos = sorted(dest.glob('p_*.tif'))
+        final = pasta / f'p_{cel}.tif'
+        if len(feitos) == len(entradas) and entradas:
+            juntar(feitos, final)
+            print(f'{cel}: {len(feitos)} pedaços → {final.name} ({time.time() - t0:.0f} s)')
+        else:
+            print(f'{cel}: {len(feitos)}/{len(entradas)} pedaços (junção quando todos existirem)')
+
+
 def main(lista=None):
     a = argparse.ArgumentParser(description='Inferência da CNN por janela deslizante')
     a.add_argument('--run', required=True)
@@ -196,15 +303,23 @@ def main(lista=None):
     a.add_argument('--lote', type=int, default=256)
     a.add_argument('--saida', default='')
     a.add_argument('--projeto', default=ep.PROJETO_EE)
+    a.add_argument('--tiles', default='', help="pasta canais_<modelo> de baixar_tiles.py "
+                   "('padrao' = $TILES_DIR/canais_<modelo>); vazio = baixa do GEE na hora")
+    a.add_argument('--sub', type=int, default=1, help='subdivide cada pedaço em sub × sub (memória)')
     args = a.parse_args(lista)
     if args.passo % 2 == 0:
         print('Aviso: passo par desloca meio pixel o centro do pixel de saída; prefira 1, 3 ou 5.')
 
-    ee.Initialize(project=args.projeto)
     dispositivo = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     modelos, canais, patch, modelo_dados = carregar_modelos(args.run, dispositivo)
     pasta = Path(args.saida) if args.saida else Path(args.run) / f'mapas_passo{args.passo}'
     pasta.mkdir(parents=True, exist_ok=True)
+    if args.tiles:                              # pedaços locais: sem GEE
+        (pasta / 'config_inferencia.json').write_text(json.dumps(
+            {**vars(args), 'modelo': modelo_dados, 'canais': canais, 'patch': patch,
+             'n_modelos': len(modelos)}, indent=2))
+        return rodar_tiles(args, modelos, canais, patch, modelo_dados, pasta, dispositivo)
+    ee.Initialize(project=args.projeto)
 
     todos = ep.CANAIS
     faltam = [c for c in canais if c not in todos]

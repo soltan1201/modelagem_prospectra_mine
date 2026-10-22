@@ -78,6 +78,28 @@ for combo in "A pequena 32 pequena" "B1 pequena 32 pequena" \
 done
 ```
 
+### Refazer uma rodada (travou, divergiu ou mudou algo)
+
+O `--nome` não sobrescreve: se a pasta já tiver `.pt`, o treino para. Para
+refazer, apague a pasta da rodada antes (apaga os modelos e históricos dela —
+não dá para desfazer):
+
+```bash
+rm -r /srv/almacen/db_images/runs_cnn/A_regnety_64
+python treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64
+```
+
+Troque `A_regnety_64` pelo nome da rodada. Alternativa sem apagar: rodar com
+outro nome (ex.: `--nome A_regnety_64_v2`).
+
+Se o modelo divergir (predições NaN, aviso "modelo divergiu"), refaça com lr
+menor e float32 puro:
+
+```bash
+rm -r /srv/almacen/db_images/runs_cnn/A_regnety_64
+python treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64 --lr 3e-4 --amp 0
+```
+
 ## 3. Comparar as rodadas
 
 Olhar a linha **FORA DO FOLD (todos)** de cada rodada (ou a célula 9 do
@@ -110,14 +132,75 @@ Troque modelo/backbone/épocas pelo escolhido, mantendo o sufixo `_teste`.
 Atenção: enquanto os mapas RF/GTB usados nos pseudo-rótulos forem os treinados
 com todos os pontos, o teste não é independente (ver `plano_cnn.md`).
 
-## 5. Mapa
+## 5. Mapa (pedaços locais → predição → GEE)
 
 ```bash
-# primeiro: passo 3 (90 m) em duas células
-python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 3 --celulas L2C3,L3C3
-# depois: todas as células, passo 1 (30 m)
-python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
+df -h /srv/almacen                       # espaço livre (≈ 10–24 GB por modelo nos pedaços)
+du -sh /srv/almacen/db_images/*           # quanto cada pasta ocupa
+
+# 1) canais em pedaços 6×6 por célula — uma rodada por modelo (só o escolhido)
+python baixar_tiles.py --modelo A          # → tiles_cnn/canais_A/<LxCy>/<LxCy>_r<i>c<j>.tif
+python baixar_tiles.py --modelo B1         # → tiles_cnn/canais_B1/...
+
+# 2) predição pedaço a pedaço (sem GEE); --sub 2 se faltar memória, --lote menor na GPU
+python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 3 --celulas L2C3,L3C3
+python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1
+#    → <rodada>/mapas_passo1/pedacos/<LxCy>/p_<LxCy>_r<i>c<j>.tif e <rodada>/mapas_passo1/p_<LxCy>.tif
+
+# 3) subir ao GEE (bucket + ingestão) → projects/mapbiomas-arida/mine/cnn_favorabilidade
+python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
 ```
 
-Com uma rodada sem `_teste` (sem `final.pt`), a inferência usa a média dos
-5 `fold*.pt`. Os mapas ficam em `<rodada>/mapas_passo<k>/p_<LxCy>.tif`.
+Mapas em UInt16 (p × 10000, 0 = sem dado), como o `favorabilidade_ml`. A
+rodada deve ter sido treinada com o mesmo modelo de canais dos pedaços (A ou B1).
+Sem `--tiles`, o `inferir_cnn.py` ainda baixa do GEE na hora (bom para testar
+poucas células).
+
+### Baixar os pedaços (`baixar_tiles.py`)
+
+Baixe só o modelo de canais da rodada escolhida (A **ou** B1). Rode num `tmux`
+(são 25 células × 36 pedaços = 900 pedidos ao GEE) e guarde o log:
+
+```bash
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+df -h /srv/almacen                                    # espaço livre antes
+mkdir -p /srv/almacen/db_images/tiles_cnn
+
+# teste rápido: 1 célula (36 pedaços) — confere tempo, tamanho e % com dado
+python baixar_tiles.py --modelo A --celulas L2C3
+
+# área toda (pula os pedaços já gravados)
+python baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt
+python baixar_tiles.py --modelo B1 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_B1.txt
+```
+
+Opções:
+
+| Opção | Padrão | Para quê |
+|---|---|---|
+| `--modelo A\|B1` | — (obrigatório) | canais do modelo (16 ou 15) |
+| `--celulas L2C3,L3C3` | todas | só algumas células |
+| `--n 6` | 6 | pedaços por lado em cada célula; aumente (ex.: `--n 8`) se aparecer "Pedaço passa de 48 MB" |
+| `--borda 32` | 32 (meio patch de 64) | px extras de cada lado; com patch 32 basta `--borda 16` |
+| `--threads 4` | 4 | pedidos simultâneos ao GEE; reduza para 2 se vierem muitos erros de cota |
+| `--dir /outro/lugar` | `/srv/almacen/db_images/tiles_cnn` | pasta de saída (ou `export TILES_DIR=...`) |
+
+Conferir o que já baixou e o espaço usado:
+
+```bash
+ls /srv/almacen/db_images/tiles_cnn/canais_A/*/*.tif | wc -l     # 900 = completo (25 × 36)
+du -sh /srv/almacen/db_images/tiles_cnn/canais_A
+grep ERRO /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt      # pedaços que falharam
+```
+
+Pedaço com erro não para o resto: rode o mesmo comando de novo e ele baixa só
+os que faltam. Para refazer uma célula inteira (apaga os pedaços dela — não dá
+para desfazer):
+
+```bash
+rm -r /srv/almacen/db_images/tiles_cnn/canais_A/L2C3
+python baixar_tiles.py --modelo A --celulas L2C3
+```
+
+Se mudar `--n` ou `--borda`, apague a pasta `canais_<modelo>` inteira antes:
+os nomes dos pedaços (`r<i>c<j>`) mudam de significado e misturar dá mapa errado.

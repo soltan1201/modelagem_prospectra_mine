@@ -212,10 +212,22 @@ def fatores_classe(meta, idx):
     return 0.5 / max(pos.mean(), 1e-6), 0.5 / max((~pos).mean(), 1e-6)
 
 
-def prever(modelo, loader, dispositivo):
+def tipo_amp(dispositivo, usar=True):
+    """Precisão mista: bfloat16 se a GPU suporta (mesma faixa do float32, não estoura),
+    senão float16; None = float32 (sem autocast)."""
+    if not usar or dispositivo.type != 'cuda':
+        return None
+    return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
+
+def autocast(dispositivo, dtype):
+    return torch.autocast(dispositivo.type, dtype=dtype or torch.float32, enabled=dtype is not None)
+
+
+def prever(modelo, loader, dispositivo, dtype=None):
     modelo.eval()
     saida = []
-    with torch.no_grad(), torch.autocast(dispositivo.type, enabled=dispositivo.type == 'cuda'):
+    with torch.no_grad(), autocast(dispositivo, dtype):
         for x, _, _ in loader:
             saida.append(torch.sigmoid(modelo(x.to(dispositivo, non_blocking=True))).float().cpu().numpy())
     return np.concatenate(saida)
@@ -289,6 +301,10 @@ def metricas(meta_v, p):
 
 def treinar(X, meta, canais, idx_tr, idx_va, args, dispositivo, rotulo):
     """idx_va = None: treino final com número fixo de épocas, sem olhar validação."""
+    ruins = ~np.isfinite(meta.y.values[idx_tr]) | ~np.isfinite(meta.peso.values[idx_tr])
+    if ruins.any():
+        print(f'  [{rotulo}] {ruins.sum()} amostras de treino com y/peso não finito — fora')
+        idx_tr = np.asarray(idx_tr)[~ruins]
     est = estatisticas(X, canais, idx_tr, seed=args.seed)
     ds_tr = Patches(X, meta, idx_tr, canais, est, args.patch, aumentar=True)
     dl_tr = DataLoader(ds_tr, args.lote, shuffle=True, num_workers=args.workers, drop_last=True,
@@ -301,8 +317,11 @@ def treinar(X, meta, canais, idx_tr, idx_va, args, dispositivo, rotulo):
 
     modelo = criar_modelo(args.backbone, len(canais), args.patch).to(dispositivo)
     pre = isinstance(modelo, Backbone)
-    escalador = torch.amp.GradScaler(enabled=dispositivo.type == 'cuda')
+    dtype = tipo_amp(dispositivo, args.amp)
+    escalador = torch.amp.GradScaler(enabled=dtype == torch.float16)   # só o fp16 precisa
     melhor, paciencia, hist, estado = -np.inf, 0, [], None
+    if rotulo.endswith('0') or rotulo == 'final':
+        print(f'  precisão: {dtype or torch.float32}')
 
     def otimizador(lr):
         return torch.optim.AdamW([p for p in modelo.parameters() if p.requires_grad], lr=lr, weight_decay=1e-4)
@@ -317,26 +336,37 @@ def treinar(X, meta, canais, idx_tr, idx_va, args, dispositivo, rotulo):
             opt = otimizador(args.lr / 10)
             sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.epocas - ep)
         modelo.train()
-        perdas = []
+        perdas, pulados = [], 0
         t0 = time.time()
         for x, y, w in dl_tr:
             x, y, w = x.to(dispositivo), y.to(dispositivo), w.to(dispositivo)
-            with torch.autocast(dispositivo.type, enabled=dispositivo.type == 'cuda'):
+            with autocast(dispositivo, dtype):
                 logit = modelo(x)
-                perda = F.binary_cross_entropy_with_logits(logit.float(), y, reduction='none')
+            perda = F.binary_cross_entropy_with_logits(logit.float(), y, reduction='none')
             fator = torch.where(y >= 0.5, f_pos, f_neg)        # peso da amostra × equilíbrio de classes
             perda = (perda * w * fator).sum() / (w * fator).sum()
+            if not torch.isfinite(perda):                     # lote ruim: não atualiza os pesos
+                pulados += 1
+                continue
             opt.zero_grad(set_to_none=True)
             escalador.scale(perda).backward()
+            escalador.unscale_(opt)
+            torch.nn.utils.clip_grad_norm_(modelo.parameters(), args.clip)   # evita explosão
             escalador.step(opt)
             escalador.update()
             perdas.append(perda.item())
+        if pulados:
+            print(f'  [{rotulo}] ép {ep + 1}: {pulados} lotes com perda não finita pulados')
         sched.step()
         if dl_va is None:                                   # treino final: sem validação
             hist.append({'epoca': ep + 1, 'perda': float(np.mean(perdas))})
             print(f'  [{rotulo}] ép {ep + 1:3d}  perda {np.mean(perdas):.4f}  ({time.time() - t0:.0f} s)')
             continue
-        p = prever(modelo, dl_va, dispositivo)
+        p = prever(modelo, dl_va, dispositivo, dtype)
+        if not np.isfinite(p).all():                          # divergiu: volta ao melhor estado
+            print(f'  [{rotulo}] ép {ep + 1}: predições não finitas — modelo divergiu; '
+                  'para o fold no melhor estado (tente --lr menor ou --amp 0)')
+            break
         m = metricas(meta.iloc[idx_va].reset_index(drop=True), p)
         # parada pela métrica escolhida (--metrica); fold sem ocorrência → AP dos pseudo-rótulos
         alvo = np.nan_to_num(m.get(args.metrica, m.get('ap', -m['brier'])), nan=-1e9)
@@ -356,8 +386,10 @@ def treinar(X, meta, canais, idx_tr, idx_va, args, dispositivo, rotulo):
                 break
     if dl_va is None:
         return modelo, est, pd.DataFrame(hist), None
+    if estado is None:
+        raise SystemExit(f'[{rotulo}] nenhuma época válida — reduza --lr ou rode com --amp 0')
     modelo.load_state_dict(estado)
-    return modelo, est, pd.DataFrame(hist), prever(modelo, dl_va, dispositivo)
+    return modelo, est, pd.DataFrame(hist), prever(modelo, dl_va, dispositivo, dtype)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -374,6 +406,8 @@ def argumentos(lista=None):
     a.add_argument('--lote', type=int, default=64)
     a.add_argument('--lr', type=float, default=1e-3)
     a.add_argument('--paciencia', type=int, default=8)
+    a.add_argument('--amp', type=int, default=1, help='1 = precisão mista (bf16 se a GPU suporta); 0 = float32')
+    a.add_argument('--clip', type=float, default=1.0, help='norma máxima do gradiente')
     a.add_argument('--metrica', default='ap_ponto',
                    choices=['ap_ponto', 'boyce', 'top10', 'auc_ponto'],
                    help='métrica da parada antecipada (ocorrências × fundo); padrão: precisão média')
@@ -412,7 +446,8 @@ def main(lista=None):
         idx_te = np.where(meta.conjunto == 'teste')[0]
         modelo, est, hist, _ = treinar(X, meta, canais, idx_tr, None, args, dispositivo, 'final')
         ds_te = Patches(X, meta, idx_te, canais, est, args.patch, aumentar=False)
-        p = prever(modelo, DataLoader(ds_te, args.lote * 2, num_workers=args.workers), dispositivo)
+        p = prever(modelo, DataLoader(ds_te, args.lote * 2, num_workers=args.workers), dispositivo,
+                   tipo_amp(dispositivo, args.amp))
         m = metricas(meta.iloc[idx_te].reset_index(drop=True), p)
         meta.iloc[idx_te].assign(p=p).to_csv(pasta / 'teste.csv', index=False)
         (pasta / 'metricas_teste.json').write_text(json.dumps(m, indent=2, default=float))
