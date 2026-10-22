@@ -1,15 +1,23 @@
 """
-Mapa de favorabilidade para fosfato com Maxent (ee.Classifier.amnhMaxent) sobre
-um mosaico final ASTER — presença + fundo, saída contínua 0–1 (degradê do pixel
-mais parecido com as ocorrências ao menos parecido).
+Mapa de favorabilidade por alvo mineral com Maxent (ee.Classifier.amnhMaxent)
+sobre um mosaico final ASTER — presença + fundo, saída contínua 0–1 (degradê do
+pixel mais parecido com as ocorrências ao menos parecido).
+
+Alvos (ALVO, escolhido no menu): fosfato (padrão), carbonato, mvt (Ba/F/Pb/Zn),
+ouro, manganes. Os mapas dos alvos que não são fosfato servem de covariável
+para o modelo de fosfato (ML): banda 'probability' e 'complemento' (1 − p).
+
+Mosaicos (menu): ASTER_mosaico_unico_final, aster-mosaico-final ou os dois
+(padrão) — cada etapa roda uma vez por mosaico.
 
 Entrada
-  ASSET_MOSAICO  mosaico final (ee.Image) — PREENCHER antes de rodar. Usa as
-                 bandas de BANDAS que existirem nele; se tiver a banda
+  ASSET_MOSAICO  mosaico da vez (ee.Image ou ImageCollection → mosaic()). Usa
+                 as bandas de BANDAS que existirem nele; se tiver a banda
                  'saturado', os pixels saturados saem (nas cenas zero-cloud eram
                  nuvem).
-  ASSET_FOSFATO  ocorrências/depósitos de fosfato (pontos SGB, erro de posição
-                 250–1.000 m).
+  ASSET_PONTOS   pontos_referencia (preparar_pontos_referencia.py), filtrado
+                 por 'alvo' e, se PAPEIS não for None, por 'papel'. Pontos SGB,
+                 erro de posição 250–1.000 m.
 
 Features (FEATURES_MODO)
   'bandas'          só as bandas B01–B14 do mosaico
@@ -37,16 +45,25 @@ Features (FEATURES_MODO)
   Os de TIR são razões de DN, não de emissividade — valem como contraste
   relativo.
 
-Amostras
+Amostras (um asset por mosaico, todos os alvos juntos)
+  PASTA_SAIDA/maxent_amostras_<mosaico>_<modo>
   presença (1)   até AMOSTRAS_POR_PONTO pixels sorteados num buffer de BUFFER_M
-                 em volta de cada ponto (o erro de posição é maior que o pixel).
-  fundo (0)      N_FUNDO pixels aleatórios da grid, distribuídos pelas células.
-                 Não são "ausências" — Maxent contrasta presença × paisagem.
+                 em volta de cada ponto de pontos_referencia, de TODOS os alvos
+                 e papéis (alvo, CODIGO_OBJ, fonte, papel, celula). O filtro
+                 por alvo/papel é feito na leitura (validação e mapa).
+  fundo (0)      N_FUNDO pixels aleatórios da grid, distribuídos pelas células
+                 (alvo = 'fundo', CODIGO_OBJ = -1). Não são "ausências" —
+                 Maxent contrasta presença × paisagem.
+  Além das features, cada amostra leva as bandas de origem do mosaico
+  (EXTRAS: swir_estimado, origem / camada, normalizacao, data), só para
+  análise — não entram no modelo. Para CSV local: baixar_amostras_maxent.py.
 
 Etapas (menu)
-  1) amostras → ASSET_AMOSTRAS (task toAsset). A amostragem é pesada demais
-     para rodar interativa ("Too many concurrent aggregations"); validação e
-     mapa leem a tabela salva.
+  Ordem das perguntas: mosaico (um ou os dois) → etapa → alvo (só 2–4).
+  1) amostras → maxent_amostras_<mosaico>_<modo> (task toAsset, uma por
+     mosaico; pula o que já existe). A amostragem é pesada demais para rodar
+     interativa ("Too many concurrent aggregations"); validação e mapa leem a
+     tabela salva.
   2) validação e 3) mapa, abaixo — só depois que a task 1 terminar.
 
 Validação (opção 2): bloco espacial, deixa UMA CÉLULA DA GRID de fora por vez.
@@ -54,10 +71,11 @@ Validação (opção 2): bloco espacial, deixa UMA CÉLULA DA GRID de fora por v
   fora e calcula a AUC presença × fundo dessa célula e a probabilidade mediana
   nos pontos deixados de fora. Pontos da mesma célula são vizinhos (vários
   depósitos agrupados) — deixá-los juntos de fora evita AUC inflada.
-  Resultado → models/maxent_fosfato_validacao_<mosaico>.csv
+  Resultado → models/maxent_<alvo>_validacao_<mosaico>.csv
 
-Mapa (opção 3): treina com todas as amostras e exporta a banda 'probability'
-  (float 0–1) para ASSET_SAIDA, na região da grid, a ESCALA m.
+Mapa (opção 3): treina com todas as amostras e exporta as bandas 'probability'
+  (float 0–1) e 'complemento' (1 − probability) para
+  PASTA_SAIDA/maxent_<alvo>_<mosaico>, na região da grid, a ESCALA m.
 
 Conta: a ativa (precisa escrever em projects/mapbiomas-arida).
 
@@ -81,8 +99,16 @@ log = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 # PARÂMETROS
 # ═══════════════════════════════════════════════════════════════════════════
-ASSET_MOSAICO = ''      # ← mosaico final (ee.Image). Ex.: 'projects/mapbiomas-arida/...'
-ASSET_FOSFATO = 'projects/mapbiomas-arida/mine/pontos_fosfato'
+MOSAICOS = {
+    'ASTER_mosaico_unico_final': 'projects/mapbiomas-arida/mine/ASTER_mosaico_unico_final',
+    'aster-mosaico-final':       'projects/mapbiomas-arida/mine/aster-mosaico-final',
+}
+ASSET_MOSAICO = MOSAICOS['ASTER_mosaico_unico_final']   # trocado pelo menu (Image ou ImageCollection)
+EXTRAS        = ['swir_estimado', 'origem', 'camada', 'normalizacao', 'data']   # os que existirem
+ASSET_PONTOS  = 'projects/mapbiomas-arida/mine/pontos_referencia'
+ALVOS         = ['fosfato', 'carbonato', 'mvt', 'ouro', 'manganes']
+ALVO          = 'fosfato'   # trocado pelo menu
+PAPEIS        = None        # None = todos; ['treino'] = sem os pontos de validação (R2 do fosfato)
 GRID_ASSET    = 'projects/mapbiomas-arida/mine/grid_irece_5x5_solape100'
 PASTA_SAIDA   = 'projects/mapbiomas-arida/mine'
 MODELS_DIR    = Path(__file__).resolve().parent / 'models'
@@ -115,7 +141,10 @@ MAXENT = dict(
 def ler_mosaico():
     if not ASSET_MOSAICO:
         raise SystemExit('Preencha ASSET_MOSAICO no início do script com o mosaico final.')
-    img = ee.Image(ASSET_MOSAICO)
+    if ee.data.getAsset(ASSET_MOSAICO)['type'] == 'IMAGE_COLLECTION':
+        img = ee.ImageCollection(ASSET_MOSAICO).mosaic()
+    else:
+        img = ee.Image(ASSET_MOSAICO)
     presentes = img.bandNames().getInfo()
     bandas = [b for b in BANDAS if b in presentes]
     faltando = [b for b in BANDAS if b not in presentes]
@@ -126,8 +155,10 @@ def ler_mosaico():
     if 'saturado' in presentes:
         img = img.updateMask(img.select('saturado').eq(0))
     feats, nomes = calcular_features(img.select(bandas).toFloat(), bandas)
-    log.info(f'Mosaico {ASSET_MOSAICO}: {len(bandas)} bandas; {len(nomes)} features ({FEATURES_MODO}): {nomes}')
-    return feats, nomes
+    extras = [b for b in EXTRAS if b in presentes]
+    log.info(f'Mosaico {ASSET_MOSAICO}: {len(bandas)} bandas; {len(nomes)} features ({FEATURES_MODO}); '
+             f'extras {extras}')
+    return feats, nomes, img.select(extras).toInt32()
 
 
 # nome → (bandas necessárias, função img → ee.Image)
@@ -234,7 +265,8 @@ def amostras_presenca(feats, pontos, cel_ponto):
 
     def por_ponto(f):
         cod = f.get('CODIGO_OBJ')
-        props = {'classe': 1, 'CODIGO_OBJ': cod, 'celula': cel.get(ee.Number(cod).format('%d'))}
+        props = {'classe': 1, 'CODIGO_OBJ': cod, 'celula': cel.get(ee.Number(cod).format('%d')),
+                 'alvo': f.get('alvo'), 'fonte': f.get('fonte'), 'papel': f.get('papel')}
         return (feats.sample(region=f.geometry().buffer(BUFFER_M), scale=ESCALA,
                              numPixels=AMOSTRAS_POR_PONTO * 5, seed=SEED, geometries=True)
                      .limit(AMOSTRAS_POR_PONTO)
@@ -249,7 +281,8 @@ def amostras_fundo(feats, grid):
     partes = [feats.sample(region=c['geom'], scale=ESCALA, numPixels=n * 3,
                            seed=SEED + cid, geometries=True)
                    .limit(n)
-                   .map(lambda s, cid=cid: s.set({'classe': 0, 'celula': cid}))
+                   .map(lambda s, cid=cid: s.set({'classe': 0, 'celula': cid, 'alvo': 'fundo',
+                                                  'CODIGO_OBJ': -1, 'fonte': '', 'papel': ''}))
               for cid, c in grid.items()]
     return ee.FeatureCollection(partes).flatten()
 
@@ -299,7 +332,7 @@ def validar(pres, fundo, bandas, grid, cel_ponto):
     geral = auc(np.concatenate(todas_p), np.concatenate(todas_f))
     log.info(f'AUC geral (todas as células deixadas de fora): {geral:.3f}')
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    arq = MODELS_DIR / f'maxent_fosfato_validacao_{nome_mosaico()}.csv'
+    arq = MODELS_DIR / f'maxent_{ALVO}_validacao_{nome_mosaico()}.csv'
     df.to_csv(arq, index=False)
     log.info(f'Validação → {arq}')
     print(df.round(3).to_string(index=False))
@@ -314,12 +347,19 @@ def nome_mosaico() -> str:
 
 def asset_amostras() -> str:
     modo = FEATURES_MODO.replace('+', '_')
-    return f'{PASTA_SAIDA}/maxent_fosfato_amostras_{nome_mosaico()}_{modo}'
+    return f'{PASTA_SAIDA}/maxent_amostras_{nome_mosaico()}_{modo}'
 
 
-def exportar_amostras(feats, pontos, grid, cel_ponto):
+def exportar_amostras(feats, extras, pontos, grid, cel_ponto):
     asset = asset_amostras()
-    amostras = amostras_presenca(feats, pontos, cel_ponto).merge(amostras_fundo(feats, grid))
+    try:
+        ee.data.getAsset(asset)
+        log.warning(f'{asset} já existe — pulado (apague para refazer).')
+        return
+    except ee.EEException:
+        pass
+    img = feats.addBands(extras)
+    amostras = amostras_presenca(img, pontos, cel_ponto).merge(amostras_fundo(img, grid))
     nome = asset.rsplit('/', 1)[-1]
     amostras = amostras.map(lambda f: f.set('features_modo', FEATURES_MODO))
     task = ee.batch.Export.table.toAsset(collection=amostras, description=nome, assetId=asset)
@@ -334,19 +374,25 @@ def ler_amostras():
     except ee.EEException:
         raise SystemExit(f'{asset} não existe — rode a opção 1 e espere a task terminar.')
     fc = ee.FeatureCollection(asset)
-    n = fc.aggregate_histogram('classe').getInfo()
-    log.info(f'Amostras {asset}: presença {n.get("1", 0)}, fundo {n.get("0", 0)}')
-    return fc.filter(ee.Filter.eq('classe', 1)), fc.filter(ee.Filter.eq('classe', 0))
+    pres = fc.filter(ee.Filter.eq('classe', 1)).filter(ee.Filter.eq('alvo', ALVO))
+    if PAPEIS:
+        pres = pres.filter(ee.Filter.inList('papel', PAPEIS))
+    fundo = fc.filter(ee.Filter.eq('classe', 0))
+    n = ee.Dictionary({'p': pres.size(), 'f': fundo.size()}).getInfo()
+    log.info(f'Amostras {asset}: presença {ALVO} {n["p"]}, fundo {n["f"]}')
+    return pres, fundo
 
 
 def exportar(feats, pres, fundo, bandas, grid):
     clf = treinar(pres.merge(fundo), bandas)
     regiao = ee.Geometry.MultiPolygon([c['geom'].coordinates() for c in grid.values()]).dissolve()
-    mapa = (feats.classify(clf).select('probability').toFloat()
-                 .set({'mosaico': ASSET_MOSAICO, 'pontos': ASSET_FOSFATO, 'bandas': ','.join(bandas),
+    p = feats.classify(clf).select('probability').toFloat()
+    mapa = (p.addBands(ee.Image(1).subtract(p).rename('complemento'))
+                 .set({'mosaico': ASSET_MOSAICO, 'pontos': ASSET_PONTOS, 'alvo': ALVO,
+                       'papeis': str(PAPEIS), 'bandas': ','.join(bandas),
                        'buffer_m': BUFFER_M, 'amostras_por_ponto': AMOSTRAS_POR_PONTO,
                        'n_fundo': N_FUNDO, 'maxent': str(MAXENT)}))
-    nome = f'maxent_fosfato_{nome_mosaico()}'
+    nome = f'maxent_{ALVO}_{nome_mosaico()}'
     asset = f'{PASTA_SAIDA}/{nome}'
     task = ee.batch.Export.image.toAsset(image=mapa, description=nome, assetId=asset, region=regiao,
                                          scale=ESCALA, crs='EPSG:4326', maxPixels=1e13,
@@ -356,24 +402,51 @@ def exportar(feats, pres, fundo, bandas, grid):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-def main():
-    ee.Initialize(project=get_current_account())
-    feats, bandas = ler_mosaico()
-    grid = ler_grid()
-    pontos = ee.FeatureCollection(ASSET_FOSFATO)
-    cel_ponto = celula_dos_pontos(pontos, grid)
-    log.info(f'{len(cel_ponto)} pontos de fosfato dentro da grid, em {len(set(cel_ponto.values()))} células')
+def ler_pontos(todos=False):
+    pontos = ee.FeatureCollection(ASSET_PONTOS)
+    if todos:
+        return pontos
+    pontos = pontos.filter(ee.Filter.eq('alvo', ALVO))
+    if PAPEIS:
+        pontos = pontos.filter(ee.Filter.inList('papel', PAPEIS))
+    return pontos
 
-    print(f'\nO que fazer?\n  1) amostras (presença + fundo) → {asset_amostras()}'
-          '\n  2) validação (uma célula de fora por vez)\n  3) exportar o mapa\n  4) validação + mapa')
-    acao = input('Opção [1]: ').strip() or '1'
-    if acao == '1':
-        return exportar_amostras(feats, pontos, grid, cel_ponto)
-    pres, fundo = ler_amostras()
-    if acao in ('2', '4'):
-        validar(pres, fundo, bandas, grid, cel_ponto)
-    if acao in ('3', '4'):
-        exportar(feats, pres, fundo, bandas, grid)
+
+def escolher(titulo, opcoes, padrao):
+    print(f'\n{titulo}\n' + '\n'.join(f'  {i}) {o}' for i, o in enumerate(opcoes, 1)))
+    return opcoes[int(input(f'Opção [{padrao}]: ').strip() or padrao) - 1]
+
+
+def main():
+    global ALVO, ASSET_MOSAICO
+    ee.Initialize(project= 'mapbiomas-brazil')  # get_current_account()
+    nomes_mos = list(MOSAICOS)
+    mos = escolher('Mosaico:', nomes_mos + ['os dois'], len(nomes_mos) + 1)
+    mosaicos = nomes_mos if mos == 'os dois' else [mos]
+    acoes = ['amostras (todos os alvos + fundo) → asset por mosaico',
+             'validação (uma célula de fora por vez)', 'exportar o mapa', 'validação + mapa']
+    acao = str(acoes.index(escolher('O que fazer?', acoes, 1)) + 1)
+    if acao != '1':
+        ALVO = escolher('Alvo:', ALVOS, 1)
+    grid = ler_grid()
+    pontos = ler_pontos(todos=acao == '1')
+    cel_ponto = celula_dos_pontos(pontos, grid)
+    log.info(f'{len(cel_ponto)} pontos ({"todos os alvos" if acao == "1" else ALVO}) dentro da grid, '
+             f'em {len(set(cel_ponto.values()))} células')
+
+    for m in mosaicos:
+        ASSET_MOSAICO = MOSAICOS[m]
+        log.info(f'═══ {m}')
+        if acao == '1':
+            feats, _, extras = ler_mosaico()
+            exportar_amostras(feats, extras, pontos, grid, cel_ponto)
+            continue
+        feats, bandas, _ = ler_mosaico()
+        pres, fundo = ler_amostras()
+        if acao in ('2', '4'):
+            validar(pres, fundo, bandas, grid, cel_ponto)
+        if acao in ('3', '4'):
+            exportar(feats, pres, fundo, bandas, grid)
 
 
 if __name__ == '__main__':

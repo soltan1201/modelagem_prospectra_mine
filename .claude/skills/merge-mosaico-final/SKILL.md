@@ -38,6 +38,12 @@ do usuário em aberto.
 Alternativa nova: `build_mosaico_unico.py` (skill `build-mosaico-unico`) —
 dois mosaicos base separados por SWIR, sem as 4 origens.
 
+## Comparar com o mosaico único
+
+`src/show_mosaics/visualizar_comparar_mosaicos_finais.js`: `aster-mosaico-final`
+(esquerda) × `ASTER_mosaico_unico_final` (direita) com cortina, índices com
+Δ, acervo CPRM. Os dois são entrada da skill `modelagem-favorabilidade`.
+
 ## Arquivo de referência
 
 [src/building_dataset/merge_mosaic_semestral.js](../../../src/building_dataset/merge_mosaic_semestral.js)

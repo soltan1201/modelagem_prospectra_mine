@@ -4,9 +4,10 @@
 Baixa as amostras do Maxent (presença + fundo) salvas como asset pelo
 maxent_fosfato.py e grava em CSV para análise local.
 
-  Entrada : projects/mapbiomas-arida/mine/maxent_fosfato_amostras_<...>
-            (propriedades: bandas/índices, 'classe' 1 = presença / 0 = fundo,
-            'celula'; geometria = ponto)
+  Entrada : projects/mapbiomas-arida/mine/maxent_amostras_<mosaico>_<modo>
+            (um por mosaico; propriedades: bandas/índices, extras do mosaico,
+            'classe' 1 = presença / 0 = fundo, 'alvo', 'CODIGO_OBJ', 'fonte',
+            'papel', 'celula'; geometria = ponto)
   Saída   : src/Dados/maxent/<nome_do_asset>.csv, com colunas lon/lat
 
 Usa a conta ativa do GEE (~/.config/earthengine/current_user.txt). Baixa por
@@ -29,7 +30,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.append(str(RAIZ))
 from configure_account_projects_ee import get_current_account   # noqa: E402
 
-ASSETS = ['projects/mapbiomas-arida/mine/maxent_fosfato_amostras_teste_zero_cloud_2000_2008']
+ASSETS = ['projects/mapbiomas-arida/mine/maxent_amostras_ASTER_mosaico_unico_final_bandas_indices',
+          'projects/mapbiomas-arida/mine/maxent_amostras_aster-mosaico-final_bandas_indices']
 PASTA  = RAIZ / 'Dados' / 'maxent'
 
 

@@ -1,6 +1,6 @@
 ---
 name: add-indice-espectral
-description: Use when the user wants to add a new spectral/mineral index (band ratio or expression) to the ASTER feature library, register its visualization params, or reconcile index naming between the pre-mosaic and post-mosaic band conventions. Triggers on "novo índice espectral", "índice mineral", "calculo_spectrals_index", "visualizacao_indices", "IDX_".
+description: Use when the user wants to add a new spectral/mineral index (band ratio or expression) to the ASTER feature library, register its visualization params, or reconcile index naming between the pre-mosaic and post-mosaic band conventions. Triggers on "novo índice espectral", "índice mineral", "calculo_spectrals_index", "visualizacao_indices", "IDX_", "exportar_mosaicos_indices", "phosphorite_rbd".
 ---
 
 # Add Índice Espectral
@@ -55,6 +55,25 @@ código.
    score de qualidade), avisar que isso muda `addQualityASTER_*` nos
    scripts da skill `build-mosaico-semestral` — mudança de comportamento
    do pipeline, não deste arquivo isolado; peça confirmação antes.
+
+## Cópias da lista de índices (manter em sincronia)
+
+Os índices de mineração usados nos modelos e exports existem em várias
+cópias com os mesmos nomes (`ferric_iron_2_1`, `carbonate_8_6`, `sultan_r`,
+`phosphorite_rbd`, `glcm_*`…). Um índice novo ou alterado entra em todas:
+
+| Arquivo | Função / lista |
+|---|---|
+| `src/modeling/maxent_fosfato.py` | `INDICES`, `emissividade_tir`, `calcular_features` (fonte das amostras) |
+| `src/modeling/maxent_alvos.js` | `INDICES`, `fosforitoTIR` |
+| `src/features_process/exportar_mosaicos_indices.{js,py}` e `_colab.ipynb` | `indicesMinerais`/`indices_minerais`, `indicesGeo`, `fosforitoTIR` |
+| `src/show_mosaics/visualizar_mosaico_final_acervo.js`, `visualizar_comparar_mosaicos_finais.js` | `INDICES` com faixas de cor |
+
+Convenções dessas cópias: SAVI com reflectância (valor / 1000), não com o
+valor × 1000; `phosphorite_rbd` = (ε11 + ε13)/(2·ε12) por normalização de
+emissividade (ε_max 0,96); repetidos do JS original entram uma vez
+(`abrams_r` = `sultan_r`, `Ferric_Fe` = `ferric_iron_2_1`). Amostras já
+exportadas não ganham o índice novo: refazer a etapa 1 do `maxent_fosfato.py`.
 
 ## O que este skill NÃO faz
 

@@ -49,6 +49,14 @@ Estado (2026-10-17): `ASTER_v4` tem 548 assets e `ASTER_0cloud` 42;
 Para o mosaico único (zero-cloud + preenchimento, com/sem SWIR) ver a skill
 `build-mosaico-unico`.
 
+## Contagem de cenas por semestre
+
+`src/building_dataset/contar_imagens_semestre.py` → `contagem_imagens_aster_semestre.csv`
+(total, diurnas, noturnas, com_swir, cc_lt_max, apos_blacklist, zero_cloud,
+nuvem média/mediana por ano × semestre; `POR_CELULA` opcional), com os
+mesmos filtros de `montar_semestre`. Gráficos 2000–2008 × 2009–2020:
+`graficos_imagens_semestre.ipynb` (figuras em `figuras_contagem/`, 350 dpi).
+
 ## Arquivo de referência
 
 [src/building_dataset/select_black_list_save_mosaicSem.js](../../../src/building_dataset/select_black_list_save_mosaicSem.js)

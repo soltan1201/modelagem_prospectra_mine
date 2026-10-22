@@ -4,6 +4,38 @@
 
 # Tabelas de dados e registros (amostras, pontos, registros de tasks)
 *.csv
+*.CSV
+
+# Documentos e figuras (relatórios, PDFs de referência, gráficos gerados)
+*.tex
+*.pdf
+*.PDF
+*.docx
+*.png
+*.PNG
+
+# Planilhas e dados brutos (mesma regra dos CSV)
+*.xlsx
+*.xls
+*.tif
+*.tiff
+*.zip
+
+# Arquivos auxiliares do LaTeX (o .tex e o .bib ficam; o PDF já está ignorado)
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Jupyter
+.ipynb_checkpoints/
 
 # Bytecode Python
 __pycache__/

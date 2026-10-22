@@ -2,8 +2,8 @@
 
 ## Objetivo
 Editar/planejar `src/building_dataset/build_mosaico_unico.py`: mosaicos base
-ASTER por célula separados por SWIR (etapa 1) e SWIR estimado por RF no
-mosaico sem SWIR (etapa 2).
+ASTER por célula separados por SWIR (etapa 1), SWIR estimado por RF no
+mosaico sem SWIR (etapa 2) e mosaico único juntando os dois (etapa 3).
 
 ## Pré-condições
 - `ee` inicializado com conta que lê ASTER L1T, `grid_irece_5x5_solape100`,

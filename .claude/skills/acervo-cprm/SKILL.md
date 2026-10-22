@@ -39,6 +39,13 @@ Visualizador combinado: `src/show_mosaics/visualizar_mosaico_final_acervo.js`.
 - Guia leigo: `GUIA_GCLOUD_BUCKET_GEE.md`.
 - Usuário roda os scripts de envio ("sem rodar, eu mesmo rodo").
 
+## Pontos de referência para modelos
+
+`ocorrencias_fosfato` e `recursos_minerais` alimentam
+`projects/mapbiomas-arida/mine/pontos_referencia` (fosfato + carbonato,
+mvt, ouro, manganês) via `src/modeling/preparar_pontos_referencia.py` —
+ver skill `modelagem-favorabilidade` e `docs/pontos_referencia.md`.
+
 ## Próximos alvos (só se pedido)
 
 Seção 11 do md: calcário/dolomito primeiro, depois Pb–Zn–F–Ba;

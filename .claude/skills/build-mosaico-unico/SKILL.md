@@ -1,6 +1,6 @@
 ---
 name: build-mosaico-unico
-description: Use when the user wants to build, run-plan, or adjust the single-script ASTER mosaic per grid cell (zero-cloud by minimum NDVI on top, other scenes only in gaps), split into com_swir / sem_swir assets, with the SWIR estimated for sem_swir in a second stage. Triggers on "mosaico único", "build_mosaico_unico", "com_swir", "sem_swir", "ASTER_mosaico_unico", "zero cloud + preenchimento", "estimar SWIR do mosaico sem swir".
+description: Use when the user wants to build, run-plan, or adjust the single-script ASTER mosaic per grid cell (zero-cloud by minimum NDVI on top, other scenes only in gaps), split into com_swir / sem_swir assets, with the SWIR estimated for sem_swir in a second stage. Triggers on "mosaico único", "build_mosaico_unico", "com_swir", "sem_swir", "ASTER_mosaico_unico", "ASTER_mosaico_unico_final", "etapa 3", "zero cloud + preenchimento", "estimar SWIR do mosaico sem swir".
 ---
 
 # Build Mosaico Único (ASTER, com/sem SWIR)
@@ -107,16 +107,14 @@ etapa 2 só lê o base sem_swir. Conferir nesta ordem:
 Correção: etapa 1 com "os dois" ou "só sem_swir" (com_swir salvos são
 pulados), esperar as tasks, depois etapa 2.
 
-## Estado (2026-10-17)
+## Estado (2026-10-22)
 
-`ASTER_mosaico_unico_base`: 25/25 `com_swir`; 21/25 `sem_swir` (faltam
-L3C2–L3C5, tasks em solkanCengine: L3C2 `RUNNING`, L3C3–C5 `READY`).
-solkanCengine ainda tem `READY` para L4C2–L5C5 sem_swir, que já existem —
-duplicatas que vão falhar; sugerir ao usuário cancelar (não cancelar sem
-pedido).
-`ASTER_mosaico_unico`: 21/25 `sem_swir_estimado` (L3C1 feito na rodada
-de 2026-10-16 23:50, conta caatinga05; L3C2–C5 `sem_base`). Pendente:
-etapa 2 para L3C2–L3C5 após os bases terminarem.
+`ASTER_mosaico_unico_base`: 25/25 `com_swir` e 25/25 `sem_swir`.
+`ASTER_mosaico_unico`: 21/25 `sem_swir_estimado` (faltam L3C2–L3C5; a
+etapa 3 não depende dela).
+`ASTER_mosaico_unico_final`: 25/25 (exportado em 2026-10-18/19; log
+`registro_mosaico_unico_revisao_*.csv`). É um dos dois mosaicos de entrada
+da skill `modelagem-favorabilidade`.
 
 Conferir estado sem trocar conta: `listAssets` nos dois destinos com
 credencial de caatinga05 (ver skill `gee-contas-assets`).
@@ -129,13 +127,16 @@ Poucas zero-cloud secas antes de 2008 → com_swir depende da camada 2.
 
 ## Em aberto
 
-Etapa 3 ainda não exportada. Viés residual de ~−9 % (ganho OLS < 1
-achata); RMA ou retas só com camada 1 são testes possíveis — não mudar
-sem pedido. `maxent_fosfato.py` (`ASSET_MOSAICO`) ainda não aponta para estes assets.
+Viés residual de ~−9 % (ganho OLS < 1 achata); RMA ou retas só com
+camada 1 são testes possíveis — não mudar sem pedido.
 
-Visualizador de decisão: `src/show_mosaics/visualizar_mosaico_unico.js`
-(camada/ano/mês por pixel, ΔNDVI, viés % do SWIR estimado, prévia de 4
-regras de combinação, estatísticas por célula, dispersão).
+Visualizadores (`src/show_mosaics/`):
+- `visualizar_mosaico_unico.js` — bases × estimado (camada/ano/mês por
+  pixel, ΔNDVI, viés % do SWIR, prévia de 4 regras, estatísticas, dispersão);
+- `visualizar_mosaico_unico_final.js` — etapa 3: medido × estimado
+  (`swir_estimado`, `normalizacao`), índices, viés contra o com_swir base;
+- `visualizar_comparar_mosaicos_finais.js` — v1 × único com cortina, 15
+  índices, Δ, acervo CPRM.
 
 Achados de 2026-10-17 (600 m, |ΔNDVI| ≤ 0,05):
 - os assets `com_swir` têm `meses = 7-10`; os `sem_swir` e os estimados,

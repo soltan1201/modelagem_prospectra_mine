@@ -1,6 +1,6 @@
 # Quadro Kanri — Prospectra Irecê
 
-Atualizado em 2026-10-17. Cada item é um cartão: o título em negrito vai no
+Atualizado em 2026-10-22. Cada item é um cartão: o título em negrito vai no
 cartão, o texto depois do travessão vai na descrição. Etiquetas sugeridas entre
 colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 
@@ -10,19 +10,23 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 
 ### Urgente (destrava o que está em processo)
 
-- **Cancelar tasks duplicadas em solkanCengine** [infra] — `ASTER_base_sem_swir`
-  L4C2–L4C5 e L5C1–L5C5 estão `READY`, mas esses assets já existem; vão falhar e
-  ocupam a fila na frente/ao lado de L3C3–C5. Manter só L3C2–L3C5.
-- **Mosaico único etapa 2 para L3C2–L3C5** [mosaico] — rodar
-  `build_mosaico_unico.py` etapa 2 só depois que os bases sem_swir terminarem.
+- **Refazer contagem de cenas com SWIR** [mosaico] — `contar_imagens_semestre.py`
+  corrigido (`com_swir` contava a B04 vazia de 2009–2020); rodar de novo, a
+  célula [4] do `graficos_imagens_semestre.ipynb` e trocar `c4_disponibilidade_semestre.png`
+  em `docs/figuras_contagem/` e no relatório do mosaico.
+- **Mosaico único etapa 2 para L3C2–L3C5** [mosaico] — os bases sem_swir já
+  estão 25/25; só completa `ASTER_mosaico_unico` (a etapa 3 não depende dela).
 - **Conferir os 25 `sem_swir_estimado`** [mosaico] — cobertura, banda
   `normalizacao`, emendas entre células.
 
 ### Decisões
 
-- **Exportar etapa 3 do mosaico único** [mosaico] — `build_mosaico_unico.py`
-  etapa 3, retas `mosaicos`; depois das bases L3C2–L3C5. Conferir
-  `retas_mosaico_unico_*.csv` e o viés no `visualizar_mosaico_unico.js`.
+- **Mosaico de entrada da favorabilidade: v1 × único** [maxent] — fosfato:
+  AUC por ponto (célula de fora) 0,83 no v1 × 0,62 no único com RF/GTB.
+  Conferir se é assinatura de cena da colcha do v1 (AUC por célula, nulos).
+- **Modelo da favorabilidade** [maxent] — RF/GTB ganham do Maxent em 8–9 de 10
+  combinações (avaliar_maxent.ipynb, 24b); confirmar com nulos rodados com
+  RF/GTB antes de fixar.
 - **Viés residual do SWIR (~−9 %)** [swir] — testar RMA ou retas só com
   camada 1 na etapa 3.
 - **Cadeia v2 seco (jul–out)** [mosaico] — exportar `ASTER_v5`,
@@ -32,8 +36,8 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
   com ASTER 30/90 m.
 - **Extensão do modelo** [acervo] — área toda ou só a coberta pelo 1042.
 - **Amostras R3 (P₂O₅ ≥ 5%)** [maxent] — treino ou só validação.
-- **Fundo do Maxent** [maxent] — aleatório, restrito aos carbonatos ou
-  target-group (R5).
+- **Fundo dos modelos** [maxent] — aleatório (atual), restrito aos carbonatos
+  ou target-group (R5); o notebook já tem `FUNDO = 'target_group'`.
 
 ### Modelo de SWIR
 
@@ -49,8 +53,6 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 
 ### Fase 0 — fechar a base
 
-- **Apontar visualizador e `maxent_fosfato.py` para o mosaico escolhido**
-  [maxent] — `ASSET_MOSAICO` está vazio.
 - **`stack_variaveis.py`** [acervo] — pilha por célula: eU, eTh, K, eU/eTh,
   eU/K, campo magnético, geologia (Fm. Salitre), SRTM/Copernicus DEM.
 - **Revisar os pontos de fosfato** [maxent] — depósito × ocorrência, erro de
@@ -64,10 +66,19 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 
 ### Fase 2 — ensemble
 
-- **Maxent: amostras com o mosaico final** [maxent] — `FEATURES_MODO =
-  'bandas+indices'`; o teste com zero-cloud 2000–2008 ficou sem presenças.
-- **Maxent: validação por célula de fora** [maxent] — AUC por célula.
-- **Maxent: mapa de probabilidade** [maxent].
+- **Nulos e AUC por célula para RF/GTB** [maxent] — `avaliar_maxent.ipynb`
+  seção 5 hoje só roda o Maxent.
+- **Favorabilidade dos outros alvos** [maxent] — carbonato, mvt, ouro,
+  manganês: ligar em `ALVOS` do `exportar_favorabilidade_ml.py`.
+- **Amostras/patches para deep learning** [maxent] — áreas com p ≥ 0,5 no RF e
+  no GTB (`favorabilidade_ml`); antes: tirar manchas com borda de cena,
+  conferir na litologia (Una/Salitre), rarefazer e excluir células de
+  validação. Ver seção "Mapas de favorabilidade" do relatório de avaliação.
+- **Conferir as manchas novas do sul e do centro** [maxent] — p alto sem pontos
+  de treino nem de validação; checar no mosaico único e na geologia; candidatas
+  ao campo.
+- **Mapas RF/GTB no mosaico único** [maxent] — rodar `exportar_favorabilidade_ml.py`
+  com o outro mosaico para comparar as manchas.
 - **Modo ensemble no Maxent** [incerteza] — N = 100–500 realizações: bootstrap e
   jitter das presenças, fundo, variáveis, `betaMultiplier`; saída
   `fosfato_ensemble` (p_media, p_dp, p_p10, p_p90, entropia, hipotese).
@@ -104,6 +115,10 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 
 ### Manutenção
 
+- **Correção da saturação com referência independente** [mosaico] — se voltar
+  ao tema: usar a mesma área em cena com ganho normal (`GAIN_SETTING_B01/B02`)
+  como verdade nos pixels saturados (`src/modeling/apontes.md`).
+
 - **Corrigir `.copyProperties` em `mascaraNuvemASTER`** [infra] —
   `select_black_list_save_mosaicSem.js` e
   `scripts_mosaico_ASTER_samples_Landsat.js`.
@@ -115,12 +130,14 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 
 ## Tarefas em processo
 
-- **Mosaico único etapa 1 — sem_swir L3C2–L3C5** [mosaico] — 21/25 salvos; L3C2
-  `RUNNING`, L3C3–L3C5 `READY` em solkanCengine.
 - **Mosaico único etapa 2 — sem_swir_estimado** [mosaico] — 21/25 (L3C1
   concluído em 2026-10-16; faltam L3C2–L3C5).
-- **Maxent fosfato** [maxent] — script pronto (amostras, validação, mapa);
-  aguarda o mosaico final escolhido.
+- **Relatórios LaTeX** [infra] — mosaico (`docs/relatorio_mosaico_aster/`),
+  avaliação (`docs/relatorio_avaliacao_modelos/`) e acervo
+  (`docs/relatorio_acervo_cprm/`) com figuras; o do mosaico ganhou a seção 5.1
+  (saturação do VNIR, pseudo-saturação com Landsat). Falta completar as
+  referências marcadas `[CONFERIR]` (Guha 2019, Gonzalez 2019, Chander 2013) e
+  trocar o `c4` corrigido.
 
 ---
 
@@ -131,8 +148,11 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 - **Mosaicos semestrais v4** [mosaico] — `ASTER_v4`, 548 assets.
 - **Zero-cloud 2000–2008 e 2009–2020** [mosaico] — `ASTER_0cloud`, 42 assets.
 - **Listas de cenas** [mosaico] — blacklist e zero-cloud revisadas.
-- **Piloto de saturação VNIR × Landsat** [mosaico] — saturados nas zero-cloud são
-  nuvem; marcados com `saturado` e excluídos.
+- **Piloto de saturação VNIR × Landsat** [mosaico] — pseudo-saturação (treino
+  DN < 200, teste 200–253) em 4 cenas: correção pior que o valor cortado em 6
+  de 8 combinações (melhor só na B02 de 2006, empate na B02 de 2010);
+  saturados nas zero-cloud são nuvem → marcados com `saturado` e excluídos.
+  Documentado no relatório do mosaico (seção 5.1).
 - **Análises de histograma e normalização** [swir] — DN bom × ruim, LUT de
   casamento.
 - **Pontos pareados zero-cloud** [swir] — 00–08 × 09–20.
@@ -146,7 +166,25 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 - **`build_mosaico_unico.py`** [mosaico] — etapas 1 e 2.
 - **Etapa 3 do mosaico único (código)** [mosaico] — junta com_swir e sem_swir;
   SWIR re-estimado com retas entre os mosaicos + RF (2026-10-17).
-- **Mosaico único etapa 1 — com_swir** [mosaico] — 25/25.
+- **Mosaico único etapa 1 — com_swir e sem_swir** [mosaico] — 25/25 cada.
+- **Mosaico único etapa 3** [mosaico] — `ASTER_mosaico_unico_final` 25/25
+  (2026-10-18/19).
+- **Visualizadores dos mosaicos finais** [mosaico] —
+  `visualizar_mosaico_unico_final.js` e `visualizar_comparar_mosaicos_finais.js`
+  (v1 × único com cortina, 15 índices, Δ, acervo).
+- **Pontos de referência unificados** [maxent] — `pontos_referencia` (1.103:
+  fosfato 47 com `fonte` antigo+cprm/cprm e `papel`, carbonato 327, mvt 252,
+  ouro 208, manganês 269); `preparar_pontos_referencia.py`.
+- **Amostras dos dois mosaicos** [maxent] — `maxent_amostras_<mosaico>_bandas_indices`
+  (31.860 cada: presença de todos os alvos + 10 mil de fundo, 36 features).
+- **Maxent por alvo e mosaico** [maxent] — `maxent_fosfato.py` (menu alvo/mosaico)
+  e `maxent_alvos.js` (prévia no Code Editor).
+- **Avaliação Maxent × RF × GTB** [maxent] — `avaliar_maxent.ipynb`: célula de
+  fora, ROC, Boyce, curva de sucesso, nulos, R2, p(outros alvos) como covariável.
+- **Seleção de variáveis por SHAP** [maxent] — 21 de 36 (`FEATURES_DL`,
+  `models/ranking_features_shap_20261021.csv`).
+- **Export de bandas e índices para o Drive** [mosaico] —
+  `features_process/exportar_mosaicos_indices.{js,py}` e versão Colab.
 - **Acervo CPRM: catálogo, download, .grd → GeoTIFF** [acervo].
 - **Acervo CPRM no GEE** [acervo] — 10 assets em `acervo_cprm/` (gama, mag,
   litologia, estruturas, dolinas, ocorrências, P₂O₅, recursos minerais).
@@ -156,4 +194,14 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [incerteza], [infra].
 - **Ferramenta de cota de assets** [infra] — `listar_pastas_tabelas_gee.py`.
 - **Análise dos documentos de incerteza e plano Irecê** [incerteza] —
   `docs/analise_fluxo_prospeccao_e_plano_irece.md`.
-- **Skills e specs do Claude Code** [infra] — 10 skills em `.claude/skills/`.
+- **Favorabilidade RF/GTB do fosfato no GEE** [maxent] — `favorabilidade_ml`,
+  mosaico v1, RF e GTB 25/25 cada (2026-10-22); visualizador com histogramas,
+  curva área × limiar, concordância p ≥ limiar e legenda.
+- **Contagem de cenas por semestre** [mosaico] — `contar_imagens_semestre.py` e
+  `graficos_imagens_semestre.ipynb` (2000–2008 × 2009–2020).
+- **Figuras do treino do SWIR a 450 dpi** [swir] — `train_swir_models.ipynb`
+  salva `c<célula>_*.png` em `models/zero_cloud/figuras/`.
+- **Mapa de localização** [infra] — `show_mosaics/mapa_localizacao.js` (biomas,
+  estados, área de estudo).
+- **Skills e specs do Claude Code** [infra] — 11 skills em `.claude/skills/`
+  (nova: `modelagem-favorabilidade`, 2026-10-22).
