@@ -72,8 +72,8 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [dl], [incerteza], [infra].
   manganês: ligar em `ALVOS` do `exportar_favorabilidade_ml.py`.
 - **CNN: exportar os patches** [dl] — `model_DL/exportar_patches.py` no
   servidor: opção 1 (só sortear) para conferir quantidades, depois opção 2.
-  No Colab: células 6–7 do `cnn_colab.ipynb`, ou copiar `patches_cnn/` do
-  servidor para o Drive.
+  No Colab: células 6–7 do `cnn_colab.ipynb`, ou subir `patches_cnn/` do
+  servidor para o Drive com rclone (`model_DL/guia_gdrive.md`).
   Saída `/srv/almacen/db_images/patches_cnn/modelo_{A,B1}/`.
 - **CNN: linha de base e backbones** [dl] — `treinar_cnn.py`: CNN pequena 32 px
   (A e B1), depois RegNetY-016, EfficientNetV2-S, ResNet-50, CoAtNet-0 a 64 px;

@@ -76,7 +76,7 @@ def carregar(modelo, pasta=PATCHES_DIR):
         raise SystemExit(f'Nenhum .npz em {pasta / f"modelo_{modelo}"} — rode exportar_patches.py')
     Xs, metas, canais = [], [], None
     for a in arquivos:
-        z = np.load(a)
+        z = np.load(a, allow_pickle=True)    # .npz gerados por exportar_patches (texto pode vir como objeto)
         Xs.append(z['X'])
         metas.append(pd.DataFrame({k: z[k] for k in META if k in z.files}))
         canais = [str(c) for c in z['canais']]

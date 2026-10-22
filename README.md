@@ -165,6 +165,7 @@ Compilar com `latexmk -pdf <arquivo>.tex` dentro da pasta.
 | `treinar_cnn.py` | PyTorch + timm: CNN pequena ou RegNetY-016 / EfficientNetV2-S / ResNet-50 / CoAtNet-0; BCE com rótulo suave; validação cruzada por fold; `auc_ponto` contra o GTB (0,84); `--teste` no fim |
 | `inferir_cnn.py` | janela deslizante por célula (passo 3 = 90 m ou 1 = 30 m), ensemble dos folds, GeoTIFF de p por célula |
 | `cnn_colab.ipynb` | os três scripts no Colab (importa os mesmos `.py`): Drive, GEE, exportação, treino, comparação das rodadas, teste, inferência e mapa |
+| `guia_gdrive.md` | subir `patches_cnn/` e `runs_cnn/` do servidor para o Drive com rclone (servidor sem navegador), para treinar no Colab |
 
 Modelo **A** = 15 índices espectrais + `swir_estimado` (16 canais); modelo
 **B1** = log da reflectância B01–B09 + emissividade B10–B14 + `swir_estimado`
@@ -185,7 +186,7 @@ src/
 │                        exportar_favorabilidade_ml.py (RF/GTB no GEE);
 │                        README.md = diário dos testes de modelagem
 ├── model_DL/            CNN: exportar_patches.py, treinar_cnn.py, inferir_cnn.py, plano_cnn.md,
-│                        cnn_colab.ipynb (mesmos scripts no Colab)
+│                        cnn_colab.ipynb (mesmos scripts no Colab), guia_gdrive.md
 ├── dowloadQGIS/         Acervo SIG SGB/CPRM: catálogo, download, .grd → tif, envio ao GEE
 │                        (ACERVO_CPRM_IRECE.md = documento central)
 ├── features_process/    biblioteca de índices espectrais (JS); exportar_mosaicos_indices

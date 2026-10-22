@@ -30,6 +30,8 @@ teste único → mapa de p por janela deslizante.
   `oof_validacao.csv`; com `--teste`: `final.pt`, `teste.csv`,
   `metricas_teste.json`.
 - `<rodada>/mapas_passo<k>/p_<LxCy>.tif` + `config_inferencia.json`.
+- Cópia no Drive (`gdrive:prospectra/patches_cnn`, `.../runs_cnn`) via rclone
+  (`guia_gdrive.md`), feita pelo usuário.
 
 ## Efeitos colaterais
 Muitas chamadas síncronas ao GEE (`computePixels`, 8 threads, com novas

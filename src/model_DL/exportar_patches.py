@@ -364,7 +364,10 @@ def baixar_celula(img, df_cel, cel):
                 log.warning(f'  {df_cel.iloc[i].id}: falhou ({e})')
     X, d = X[ok], df_cel[ok].reset_index(drop=True)
     # colunas de texto como str (np.load sem allow_pickle)
-    meta = {c: (d[c].astype(str).to_numpy() if d[c].dtype == object else d[c].to_numpy()) for c in d.columns}
+    # texto como array de str (U), não de objetos: com pandas ≥ 3 o dtype de texto não é
+    # 'object' e o to_numpy() devolveria objetos (np.load exigiria allow_pickle)
+    meta = {c: (d[c].to_numpy() if pd.api.types.is_numeric_dtype(d[c]) else d[c].astype(str).to_numpy(dtype=str))
+            for c in d.columns}
     origem = X[:, CANAIS.index('origem')]
     for modelo, canais in MODELOS.items():
         idx = [CANAIS.index(c) for c in canais]

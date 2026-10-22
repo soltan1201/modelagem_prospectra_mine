@@ -21,6 +21,7 @@ exportação nem inferência.
 | `treinar_cnn.py` | treino com validação cruzada por fold; `--teste` no fim |
 | `inferir_cnn.py` | janela deslizante por célula → GeoTIFF de p |
 | `cnn_colab.ipynb` | os três no Colab, **importando** os `.py` (não copia código) |
+| `guia_gdrive.md` | subir `patches_cnn/` e `runs_cnn/` do servidor para o Drive com rclone |
 
 Os três compartilham funções: `inferir_cnn` usa `exportar_patches.imagem_canais`
 (canais idênticos ao treino) e `treinar_cnn.criar_modelo`/`CANAL_BIN`;
@@ -63,5 +64,11 @@ separada e `ASSET_FAV` apontando para ela.
 
 Servidor: patches `/srv/almacen/db_images/patches_cnn/modelo_{A,B1}/`,
 rodadas `/srv/almacen/db_images/runs_cnn/`; trocar com `PATCHES_DIR` e
-`RUNS_DIR`. Colab: pastas no Drive (célula 2), cópia local dos patches antes
-do treino (`COPIAR_LOCAL`).
+`RUNS_DIR`. Colab: `MyDrive/prospectra/patches_cnn` e `.../runs_cnn` (célula
+2), cópia local dos patches antes do treino (`COPIAR_LOCAL`). Servidor → Drive:
+`rclone copy` (remote `gdrive:`), passo a passo em `guia_gdrive.md`; com os
+patches no Drive, o notebook pula a exportação (células 6–7).
+
+Tamanho: N patches por `.npz` = amostras da célula (~140 a ~400); total
+~4.500–5.000 por modelo, ~0,6–0,7 GB em float16. Número exato: opção 1 do
+`exportar_patches.py` (tabela origem × conjunto e `indice_patches.csv`).
