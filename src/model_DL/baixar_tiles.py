@@ -64,6 +64,7 @@ def pedacos(cel, n):
     c0, c1, l0, l1 = limites_celula(cel)
     cols = np.linspace(c0, c1, n + 1).round().astype(int)
     lins = np.linspace(l0, l1, n + 1).round().astype(int)
+    cols, lins = cols.tolist(), lins.tolist()   # int do Python: o computePixels serializa em JSON
     return [(i, j, lins[i], lins[i + 1], cols[j], cols[j + 1]) for i in range(n) for j in range(n)]
 
 

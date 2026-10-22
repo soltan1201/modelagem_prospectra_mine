@@ -174,6 +174,40 @@ python baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/lo
 python baixar_tiles.py --modelo B1 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_B1.txt
 ```
 
+Com `tmux` (continua rodando se a conexão SSH cair):
+
+```bash
+tmux new -s tiles                         # abre a sessão "tiles"
+
+# dentro do tmux:
+conda activate py_gee
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+python baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt
+
+# sair sem parar o processo: Ctrl+b, solta, d
+```
+
+```bash
+tmux ls                                   # sessões abertas
+tmux attach -t tiles                      # voltar à sessão
+tail -f /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt   # acompanhar sem entrar (Ctrl+c sai do tail)
+tmux kill-session -t tiles                # fechar a sessão quando terminar (para o que estiver rodando)
+```
+
+Os dois modelos em sequência numa só sessão, sem precisar entrar:
+
+```bash
+tmux new -d -s tiles "bash -lc 'conda activate py_gee && \
+  cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL && \
+  python baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt && \
+  python baixar_tiles.py --modelo B1 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_B1.txt; exec bash'"
+```
+
+O `exec bash` no fim deixa a sessão aberta depois de terminar, para ver a
+saída com `tmux attach -t tiles`. Se o `conda activate` falhar dentro do
+`bash -lc`, troque por `source ~/miniconda3/bin/activate py_gee` (ajuste o
+caminho do conda).
+
 Opções:
 
 | Opção | Padrão | Para quê |
