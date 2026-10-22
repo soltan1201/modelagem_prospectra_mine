@@ -28,14 +28,18 @@ Aumento   rotações de 90°, espelhamento, ganho/deslocamento aleatório por ca
 Treino: só uso_treino = 1 (pseudo-rótulos, negativos fáceis e difíceis,
 ocorrências de treino em magenta). Validação: todos os patches do fold.
 
-Métricas (validação)
-  auc_amostra   pseudo-rótulos (uso_treino = 1, sem ocorrências), positivo = y ≥ 0,5
-  auc_ponto     ocorrências reais do fold, TODOS os centros (sem filtro de p),
-                mediana por ponto × FUNDO aleatório — mesma régua do RF/GTB;
-                é a métrica da parada antecipada
+Métricas (validação) — nenhuma é acurácia: com poucas ocorrências e muito fundo,
+acurácia é alta só por prever "fundo" em tudo.
+  Ocorrências reais do fold (TODOS os centros, sem filtro de p; mediana por ponto)
+  × FUNDO aleatório — mesma régua do RF/GTB:
+    ap_ponto   precisão média (precisão × revocação); acaso = prevalência (ap_base)
+    ap_ganho   ap_ponto / ap_base
+    boyce      Boyce contínuo (−1 a 1): observado/esperado sobe com p?
+    top10      fração das ocorrências nos 10% mais favoráveis (acaso = 0,10)
+    auc_ponto  AUC (ordenação) — referência GTB = 0,84 (v1)
   auc_ponto_neg / auc_ponto_dif   as mesmas ocorrências × negativos fáceis / difíceis
-  ap, brier
-  Referência: GTB, AUC por ponto com célula de fora = 0,84 (v1).
+  ap, auc_amostra, brier          pseudo-rótulos de treino (uso_treino = 1)
+  Parada antecipada: --metrica (padrão ap_ponto); fold sem ocorrência usa o ap.
 
 Saídas (--saida/<modelo>_<backbone>_<patch>px_<data>/)
   config.json, metricas_folds.csv, oof_validacao.csv (predição fora do fold),
@@ -222,10 +226,44 @@ def auc_pontos(oc, ref):
     return roc_auc_score(np.r_[np.ones(len(ponto)), np.zeros(len(ref))], np.r_[ponto, ref.p]), len(ponto)
 
 
+def boyce(pp, pf, largura=0.1, n_janelas=91):
+    """Índice de Boyce contínuo (Hirzel et al. 2006) com janelas de área igual: cada janela
+    cobre `largura` do fundo; P/E = fração das presenças na janela / largura; Spearman."""
+    from scipy.stats import spearmanr
+    if len(pp) < 2 or len(pf) < 10:
+        return float('nan')
+    u = np.searchsorted(np.sort(pf), pp) / len(pf)
+    cent = np.linspace(largura / 2, 1 - largura / 2, n_janelas)
+    pe = np.array([((u >= c - largura / 2) & (u < c + largura / 2)).mean() / largura for c in cent])
+    return float(spearmanr(cent, pe).statistic)
+
+
+def metricas_presenca(oc, fundo):
+    """Métricas para presença × fundo desbalanceados (poucas ocorrências, muito fundo).
+    Nenhuma é acurácia (que seria alta só por prever 'fundo' em tudo):
+      ap_ponto       precisão média (área sob precisão × revocação); a referência
+                     aleatória é a prevalência ap_base = n_pontos / (n_pontos + n_fundo)
+      ap_ganho       ap_ponto / ap_base (quantas vezes melhor que o acaso)
+      boyce          Boyce contínuo: a razão observado/esperado sobe com p? (−1 a 1)
+      top10          fração das ocorrências nos 10% mais favoráveis do fundo (acaso = 0,10)
+      auc_ponto      AUC (ordenação; não depende da prevalência, mas fica otimista
+                     quando o fundo é fácil — ler junto com ap_ponto)"""
+    pp = oc.groupby('codigo_obj').p.median().to_numpy()     # um valor por ocorrência
+    pf = fundo.p.to_numpy()
+    y = np.r_[np.ones(len(pp)), np.zeros(len(pf))]
+    s = np.r_[pp, pf]
+    base = len(pp) / len(y)
+    ap = average_precision_score(y, s)
+    return {'n_pontos': len(pp), 'auc_ponto': roc_auc_score(y, s), 'ap_ponto': ap, 'ap_base': base,
+            'ap_ganho': ap / base, 'boyce': boyce(pp, pf),
+            'top10': float((pp >= np.quantile(pf, 0.9)).mean())}
+
+
 def metricas(meta_v, p):
     """auc_amostra/ap/brier: pseudo-rótulos de treino (uso_treino = 1).
-    auc_ponto: ocorrências reais (todos os centros, sem filtro de p) × FUNDO aleatório —
-    a mesma régua do RF/GTB (0,84). auc_ponto_neg / _dif: × negativos fáceis / difíceis."""
+    Ocorrências reais (todos os centros, sem filtro de p) × FUNDO aleatório — mesma régua
+    do RF/GTB: ap_ponto, ap_ganho, boyce, top10, auc_ponto (ver metricas_presenca).
+    auc_ponto_neg / _dif: as mesmas ocorrências × negativos fáceis / difíceis."""
     m = meta_v.assign(p=p)
     pseudo = m[m.uso_treino == 1] if 'uso_treino' in m else m
     pseudo = pseudo[~pseudo.origem_amostra.str.startswith('ocorrencia')]
@@ -236,11 +274,15 @@ def metricas(meta_v, p):
     out['brier'] = float(np.mean((pseudo.p - pseudo.y) ** 2)) if len(pseudo) else float('nan')
     oc = m[m.origem_amostra.str.startswith('ocorrencia')]
     if len(oc):
-        for nome, origem in [('auc_ponto', 'fundo'), ('auc_ponto_neg', 'negativo'),
-                             ('auc_ponto_dif', 'negativo_dificil')]:
+        fundo = m[m.origem_amostra == 'fundo']
+        if not len(fundo):                      # .npz antigos, sem fundo aleatório
+            fundo = m[m.origem_amostra == 'negativo']
+        if len(fundo):
+            out.update(metricas_presenca(oc, fundo))
+        for nome, origem in [('auc_ponto_neg', 'negativo'), ('auc_ponto_dif', 'negativo_dificil')]:
             ref = m[m.origem_amostra == origem]
             if len(ref):
-                out[nome], out['n_pontos'] = auc_pontos(oc, ref)
+                out[nome], _ = auc_pontos(oc, ref)
     return out
 
 
@@ -295,11 +337,14 @@ def treinar(X, meta, canais, idx_tr, idx_va, args, dispositivo, rotulo):
             continue
         p = prever(modelo, dl_va, dispositivo)
         m = metricas(meta.iloc[idx_va].reset_index(drop=True), p)
-        alvo = np.nan_to_num(m.get('auc_ponto', m.get('auc_amostra', -m['brier'])), nan=-1e9)
+        # parada pela métrica escolhida (--metrica); fold sem ocorrência → AP dos pseudo-rótulos
+        alvo = np.nan_to_num(m.get(args.metrica, m.get('ap', -m['brier'])), nan=-1e9)
         hist.append({'epoca': ep + 1, 'perda': float(np.mean(perdas)), **m})
-        print(f'  [{rotulo}] ép {ep + 1:3d}  perda {np.mean(perdas):.4f}  '
-              f'auc_amostra {m.get("auc_amostra", float("nan")):.3f}  '
-              f'auc_ponto {m.get("auc_ponto", float("nan")):.3f}  ({time.time() - t0:.0f} s)')
+        nan = float('nan')
+        print(f'  [{rotulo}] ép {ep + 1:3d}  perda {np.mean(perdas):.4f}  ap {m.get("ap", nan):.3f}  '
+              f'| ocorrências: ap {m.get("ap_ponto", nan):.3f} ({m.get("ap_ganho", nan):.1f}× acaso)  '
+              f'boyce {m.get("boyce", nan):.2f}  top10 {m.get("top10", nan):.2f}  '
+              f'auc {m.get("auc_ponto", nan):.3f}  ({time.time() - t0:.0f} s)')
         if alvo > melhor:
             melhor, paciencia = alvo, 0
             estado = {k: v.detach().cpu().clone() for k, v in modelo.state_dict().items()}
@@ -328,6 +373,9 @@ def argumentos(lista=None):
     a.add_argument('--lote', type=int, default=64)
     a.add_argument('--lr', type=float, default=1e-3)
     a.add_argument('--paciencia', type=int, default=8)
+    a.add_argument('--metrica', default='ap_ponto',
+                   choices=['ap_ponto', 'boyce', 'top10', 'auc_ponto'],
+                   help='métrica da parada antecipada (ocorrências × fundo); padrão: precisão média')
     a.add_argument('--workers', type=int, default=4)
     a.add_argument('--seed', type=int, default=42)
     a.add_argument('--dados', default=str(PATCHES_DIR))
