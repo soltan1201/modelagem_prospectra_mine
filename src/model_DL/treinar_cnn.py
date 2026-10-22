@@ -25,9 +25,15 @@ Normalização  por canal, estatísticas só do treino (corte p1–p99, média, 
 Aumento   rotações de 90°, espelhamento, ganho/deslocamento aleatório por canal
           (simula outra cena — contra a assinatura de cena).
 
+Treino: só uso_treino = 1 (pseudo-rótulos, negativos fáceis e difíceis,
+ocorrências de treino em magenta). Validação: todos os patches do fold.
+
 Métricas (validação)
-  auc_amostra   todos os patches, positivo = y ≥ 0,5 (pseudo-rótulos)
-  auc_ponto     ocorrências reais do fold (mediana dos jitters por ponto) × negativos
+  auc_amostra   pseudo-rótulos (uso_treino = 1, sem ocorrências), positivo = y ≥ 0,5
+  auc_ponto     ocorrências reais do fold, TODOS os centros (sem filtro de p),
+                mediana por ponto × FUNDO aleatório — mesma régua do RF/GTB;
+                é a métrica da parada antecipada
+  auc_ponto_neg / auc_ponto_dif   as mesmas ocorrências × negativos fáceis / difíceis
   ap, brier
   Referência: GTB, AUC por ponto com célula de fora = 0,84 (v1).
 
@@ -65,7 +71,7 @@ GTB_REF     = 0.84
 # ═══════════════════════════════════════════════════════════════════════════
 # DADOS
 # ═══════════════════════════════════════════════════════════════════════════
-META = ['id', 'y', 'peso', 'origem_amostra', 'conjunto', 'fold', 'celula', 'lon', 'lat',
+META = ['id', 'y', 'peso', 'origem_amostra', 'uso_treino', 'em_magenta', 'conjunto', 'fold', 'celula', 'lon', 'lat',
         'p_rf', 'p_gtb', 'papel', 'codigo_obj', 'jitter']
 
 
@@ -210,19 +216,31 @@ def prever(modelo, loader, dispositivo):
     return np.concatenate(saida)
 
 
+def auc_pontos(oc, ref):
+    """AUC: mediana de p por ocorrência (todos os jitters) × amostras de referência."""
+    ponto = oc.groupby('codigo_obj').p.median()
+    return roc_auc_score(np.r_[np.ones(len(ponto)), np.zeros(len(ref))], np.r_[ponto, ref.p]), len(ponto)
+
+
 def metricas(meta_v, p):
+    """auc_amostra/ap/brier: pseudo-rótulos de treino (uso_treino = 1).
+    auc_ponto: ocorrências reais (todos os centros, sem filtro de p) × FUNDO aleatório —
+    a mesma régua do RF/GTB (0,84). auc_ponto_neg / _dif: × negativos fáceis / difíceis."""
     m = meta_v.assign(p=p)
-    rot = (m.y >= 0.5).astype(int)
+    pseudo = m[m.uso_treino == 1] if 'uso_treino' in m else m
+    pseudo = pseudo[~pseudo.origem_amostra.str.startswith('ocorrencia')]
+    rot = (pseudo.y >= 0.5).astype(int)
     out: dict[str, float] = {'n': len(m)}
     if rot.nunique() == 2:
-        out.update(auc_amostra=roc_auc_score(rot, m.p), ap=average_precision_score(rot, m.p))
-    out['brier'] = float(np.mean((m.p - m.y) ** 2))
+        out.update(auc_amostra=roc_auc_score(rot, pseudo.p), ap=average_precision_score(rot, pseudo.p))
+    out['brier'] = float(np.mean((pseudo.p - pseudo.y) ** 2)) if len(pseudo) else float('nan')
     oc = m[m.origem_amostra.str.startswith('ocorrencia')]
-    neg = m[m.origem_amostra == 'negativo']
-    if len(oc) and len(neg):
-        ponto = oc.groupby('codigo_obj').p.median()
-        out['auc_ponto'] = roc_auc_score(np.r_[np.ones(len(ponto)), np.zeros(len(neg))], np.r_[ponto, neg.p])
-        out['n_pontos'] = len(ponto)
+    if len(oc):
+        for nome, origem in [('auc_ponto', 'fundo'), ('auc_ponto_neg', 'negativo'),
+                             ('auc_ponto_dif', 'negativo_dificil')]:
+            ref = m[m.origem_amostra == origem]
+            if len(ref):
+                out[nome], out['n_pontos'] = auc_pontos(oc, ref)
     return out
 
 
@@ -331,10 +349,12 @@ def main(lista=None):
     print(pd.crosstab(meta.origem_amostra, meta.conjunto).to_string())
 
     treino = meta.conjunto == 'treino'
+    # uso_treino = 0 (fundo aleatório, ocorrência fora de magenta) só entra na avaliação
+    uso = meta.uso_treino.astype(int) == 1 if 'uso_treino' in meta else np.ones(len(meta), bool)
     if args.teste:
         # treina em todos os folds com --epocas fixas (use a época média das melhores do CV);
         # o teste não é olhado durante o treino
-        idx_tr = np.where(treino)[0]
+        idx_tr = np.where(treino & uso)[0]
         idx_te = np.where(meta.conjunto == 'teste')[0]
         modelo, est, hist, _ = treinar(X, meta, canais, idx_tr, None, args, dispositivo, 'final')
         ds_te = Patches(X, meta, idx_te, canais, est, args.patch, aumentar=False)
@@ -350,7 +370,7 @@ def main(lista=None):
     linhas, oof = [], []
     for k in [int(f) for f in args.folds.split(',')]:
         idx_va = np.where(treino & (meta.fold == k))[0]
-        idx_tr = np.where(treino & (meta.fold != k))[0]
+        idx_tr = np.where(treino & uso & (meta.fold != k))[0]
         if not len(idx_va):
             continue
         print(f'\n═══ fold {k}: treino {len(idx_tr)}, validação {len(idx_va)}')

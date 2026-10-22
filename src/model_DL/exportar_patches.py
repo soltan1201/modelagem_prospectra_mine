@@ -5,9 +5,9 @@ direto do GEE por ee.data.computePixels (array NumPy) e é gravado em .npz.
 
 Amostras (centro do patch)
   ocorrencia_treino  ocorrências de fosfato com papel = treino (bacia):
-                     o ponto + K_JITTER centros num raio de RAIO_JITTER_M,
-                     mantidos só onde RF e GTB têm p ≥ P_POS (área magenta).
-                     y = 1, peso = 1.
+                     o ponto + K_JITTER centros num raio de RAIO_JITTER_M.
+                     Todos exportados; no treino só os em magenta (RF e GTB
+                     ≥ P_POS, em_magenta = 1); na avaliação, todos. y = 1.
   ocorrencia_teste   ocorrências com papel = validacao (leste/norte): o ponto +
                      K_JITTER centros, SEM filtro de p (avaliação não pode
                      depender do que RF/GTB já acertam). y = 1, peso = 1.
@@ -15,7 +15,14 @@ Amostras (centro do patch)
                      p_GTB), peso = 1 (rótulo suave: a referência não é 100%).
   negativo           RF e GTB com p ≤ P_NEG, a mais de DIST_NEG_OCORR_M das
                      ocorrências. y = média(p_RF, p_GTB) ≈ 0, peso = 1.
-  Só RF / só GTB e a faixa P_NEG < p < P_POS ficam de fora.
+  negativo_dificil   RF e GTB com p em (P_NEG, P_DIF_MAX] (perto do neutro
+                     0,25), longe das ocorrências: ensina a fronteira, não só
+                     os extremos. y = média(p_RF, p_GTB), peso = 1.
+  fundo              pixels aleatórios sem filtro de p — SÓ AVALIAÇÃO
+                     (uso_treino = 0): o auc_ponto compara ocorrências × fundo,
+                     como no RF/GTB/Maxent (avaliar_maxent.ipynb).
+  Só RF / só GTB e a faixa P_DIF_MAX < p < P_POS ficam de fora do treino.
+  Coluna uso_treino: 1 entra no treino; 0 só avaliação.
 
 Divisão (por célula da grid 5×5 sem solape, divisao.json)
   teste    células com ocorrências de validação — usadas uma vez, no fim
@@ -96,11 +103,14 @@ X0, Y0        = -44.4606182671107, -9.416390538076989 # canto NW da grade do mos
 
 P_POS            = 0.5      # positivo: RF e GTB ≥ P_POS
 P_NEG            = 0.05     # negativo: RF e GTB ≤ P_NEG
+P_DIF_MAX        = 0.30     # negativo difícil: RF e GTB em (P_NEG, P_DIF_MAX] — perto do neutro 0,25
 DIST_NEG_OCORR_M = 2000     # negativos longe das ocorrências
 N_POS_CELULA     = 120      # pseudo-positivos sorteados por célula (antes da rarefação)
 N_NEG_CELULA     = 150      # negativos sorteados por célula
+N_DIF_CELULA     = 100      # negativos difíceis sorteados por célula
+N_FUNDO_CELULA   = 80       # fundo aleatório (qualquer p) — só avaliação
 DIST_MIN_POS_M   = 1000     # distância mínima entre pseudo-positivos
-DIST_MIN_NEG_M   = 1500     # distância mínima entre negativos
+DIST_MIN_NEG_M   = 1500     # distância mínima entre negativos (fáceis, difíceis e fundo)
 K_JITTER         = 8        # centros extras por ocorrência
 RAIO_JITTER_M    = 500      # erro de posição dos pontos SGB
 MARGEM_BORDA_M   = 1000     # meio patch (64 px × 30 m / 2)
@@ -242,27 +252,41 @@ def centros_ocorrencias(oc, rng):
     return pd.DataFrame(linhas)
 
 
+ROTULO_CLASSE = {3: 'ambos', 2: 'negativo_dificil', 1: 'negativo'}
+
+
 def sortear_pseudo(grid, pimg, oc):
-    """Positivos (ambos ≥ P_POS) e negativos (ambos ≤ P_NEG, longe das ocorrências) por célula."""
+    """Por célula: positivos (ambos ≥ P_POS), negativos (ambos ≤ P_NEG), negativos difíceis
+    (ambos em (P_NEG, P_DIF_MAX]) — os dois últimos longe das ocorrências — e fundo
+    aleatório sem filtro de p (só para avaliar, como o fundo do RF/GTB/Maxent)."""
     pts = ee.FeatureCollection([ee.Feature(ee.Geometry.Point([r.lon, r.lat])) for r in oc.itertuples()])
     longe = pts.distance(searchRadius=DIST_NEG_OCORR_M + 100).gt(DIST_NEG_OCORR_M).unmask(1)
-    ambos_pos = pimg.select('p_rf').gte(P_POS).And(pimg.select('p_gtb').gte(P_POS))
-    ambos_neg = pimg.select('p_rf').lte(P_NEG).And(pimg.select('p_gtb').lte(P_NEG)).And(longe)
-    classe = (ee.Image(0).where(ambos_pos, 3).where(ambos_neg, 1)
-                .updateMask(ambos_pos.Or(ambos_neg)).rename('classe').toInt())
+    rf, gtb = pimg.select('p_rf'), pimg.select('p_gtb')
+    ambos_pos = rf.gte(P_POS).And(gtb.gte(P_POS))
+    ambos_neg = rf.lte(P_NEG).And(gtb.lte(P_NEG)).And(longe)
+    ambos_dif = rf.gt(P_NEG).And(rf.lte(P_DIF_MAX)).And(gtb.gt(P_NEG)).And(gtb.lte(P_DIF_MAX)).And(longe)
+    classe = (ee.Image(0).where(ambos_pos, 3).where(ambos_dif, 2).where(ambos_neg, 1)
+                .updateMask(ambos_pos.Or(ambos_neg).Or(ambos_dif)).rename('classe').toInt())
     img = classe.addBands(pimg)
     linhas = []
     for nome, c in sorted(grid.items()):
         res = img.stratifiedSample(numPoints=0, classBand='classe', region=c['geom'], scale=30,
-                                   classValues=[1, 3], classPoints=[N_NEG_CELULA, N_POS_CELULA],
+                                   classValues=[1, 2, 3],
+                                   classPoints=[N_NEG_CELULA, N_DIF_CELULA, N_POS_CELULA],
                                    seed=SEED, geometries=True, tileScale=4).getInfo()['features']
+        fundo = pimg.sample(region=c['geom'], scale=30, numPixels=N_FUNDO_CELULA * 3, seed=SEED + 1,
+                            geometries=True, tileScale=4).limit(N_FUNDO_CELULA).getInfo()['features']
         for f in res:
             pr = f['properties']
             linhas.append({'lon': f['geometry']['coordinates'][0], 'lat': f['geometry']['coordinates'][1],
-                           'origem_amostra': 'ambos' if pr['classe'] == 3 else 'negativo',
+                           'origem_amostra': ROTULO_CLASSE[pr['classe']],
                            'p_rf': pr.get('p_rf'), 'p_gtb': pr.get('p_gtb')})
-        log.info(f'  {nome}: {sum(1 for f in res if f["properties"]["classe"] == 3)} positivos, '
-                 f'{sum(1 for f in res if f["properties"]["classe"] == 1)} negativos sorteados')
+        for f in fundo:
+            pr = f['properties']
+            linhas.append({'lon': f['geometry']['coordinates'][0], 'lat': f['geometry']['coordinates'][1],
+                           'origem_amostra': 'fundo', 'p_rf': pr.get('p_rf'), 'p_gtb': pr.get('p_gtb')})
+        n = pd.Series([ROTULO_CLASSE[f['properties']['classe']] for f in res]).value_counts().to_dict()
+        log.info(f'  {nome}: {n}, fundo {len(fundo)}')
     return pd.DataFrame(linhas)
 
 
@@ -287,24 +311,30 @@ def montar_amostras(grid, pimg):
     cel_teste, fold, grupo = dividir(grid, oc)
     log.info(f'Teste: {cel_teste}')
 
-    # ocorrências: ponto + jitter; treino só em magenta, teste sem filtro
+    # ocorrências: ponto + jitter. Todas são exportadas; no TREINO só entram os centros
+    # em magenta (em_magenta = 1); na AVALIAÇÃO entram todos (sem filtro de p)
     co = amostrar_p(centros_ocorrencias(oc, rng), pimg)
-    magenta = (co.p_rf >= P_POS) & (co.p_gtb >= P_POS)
-    tr = co[(co.papel == 'treino') & magenta].assign(origem_amostra='ocorrencia_treino')
+    co['em_magenta'] = ((co.p_rf >= P_POS) & (co.p_gtb >= P_POS)).astype(int)
+    tr = co[co.papel == 'treino'].assign(origem_amostra='ocorrencia_treino')
     te = co[co.papel != 'treino'].assign(origem_amostra='ocorrencia_teste')
-    sem = sorted(set(oc[oc.papel == 'treino'].codigo_obj) - set(tr.codigo_obj))
+    sem = sorted(set(tr.codigo_obj) - set(tr[tr.em_magenta == 1].codigo_obj))
     if sem:
-        log.warning(f'Ocorrências de treino sem nenhum centro em área magenta (ficam fora): {sem}')
+        log.warning(f'Ocorrências de treino sem nenhum centro em área magenta (só avaliação): {sem}')
 
-    log.info('Sorteando pseudo-positivos e negativos por célula…')
+    log.info('Sorteando pseudo-positivos, negativos, negativos difíceis e fundo por célula…')
     ps = sortear_pseudo(grid, pimg, oc)
-    pos = rarefazer(ps[ps.origem_amostra == 'ambos'], DIST_MIN_POS_M)
-    neg = rarefazer(ps[ps.origem_amostra == 'negativo'], DIST_MIN_NEG_M)
+    partes = [rarefazer(ps[ps.origem_amostra == 'ambos'], DIST_MIN_POS_M)]
+    for origem in ('negativo', 'negativo_dificil', 'fundo'):
+        partes.append(rarefazer(ps[ps.origem_amostra == origem], DIST_MIN_NEG_M))
 
-    df = pd.concat([tr, te, pos, neg], ignore_index=True)
+    df = pd.concat([tr, te] + partes, ignore_index=True)
     df['y'] = np.where(df.origem_amostra.str.startswith('ocorrencia'), 1.0,
                        df[['p_rf', 'p_gtb']].mean(axis=1))
     df['peso'] = 1.0
+    # uso_treino = 1: entra no treino; 0: só avaliação (fundo aleatório, ocorrência fora de magenta)
+    df['em_magenta'] = df['em_magenta'].fillna(0).astype(int) if 'em_magenta' in df else 0
+    df['uso_treino'] = (df.origem_amostra.isin(['ambos', 'negativo', 'negativo_dificil'])
+                        | ((df.origem_amostra == 'ocorrencia_treino') & (df.em_magenta == 1))).astype(int)
     df['celula'] = [celula_de(r.lon, r.lat, grid) for r in df.itertuples()]
     df = df[df.celula.notna()]
     borda = [perto_de_outro_grupo(r.lon, r.lat, r.celula, grid, grupo) for r in df.itertuples()]
