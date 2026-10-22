@@ -35,7 +35,7 @@ Canais (baixados uma vez, gravados num arquivo por modelo)
   VNIR (15 m) agregado pela média para 30 m; grade alinhada ao mosaico v1.
   Pixel sem dado = NaN.
 
-Saídas (PASTA_SAIDA)
+Saídas (PASTA_SAIDA = /srv/almacen/db_images/patches_cnn ou $PATCHES_DIR)
   modelo_A/patches_<LxCy>.npz   X (N, 16, 64, 64) float16
   modelo_B1/patches_<LxCy>.npz  X (N, 15, 64, 64) float16
      os dois com: canais, origem_patch (N, 64, 64), y, peso, origem_amostra,
@@ -56,6 +56,7 @@ Uso: python exportar_patches.py   (1 = só sortear e gravar índice/divisão;
 import json
 import logging
 import math
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -84,7 +85,9 @@ MOSAICO_FAV   = 'aster-mosaico-final'
 ALVO          = 'fosfato'
 ASSET_PONTOS  = MINE + 'pontos_referencia'
 ASSET_GRID    = MINE + 'grid_irece_5x5'               # sem solape
-PASTA_SAIDA   = RAIZ / 'Dados' / 'patches_cnn'
+# servidor: /srv/almacen/db_images/patches_cnn; outra pasta com a variável de
+# ambiente PATCHES_DIR (ex.: PATCHES_DIR=~/dados/patches python exportar_patches.py)
+PASTA_SAIDA   = Path(os.environ.get('PATCHES_DIR', '/srv/almacen/db_images/patches_cnn')).expanduser()
 
 PATCH         = 64          # px
 RES_15M       = 0.00013474729261792824                # grau, pixel do mosaico v1

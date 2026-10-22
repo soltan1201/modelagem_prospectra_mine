@@ -22,6 +22,7 @@ consultas GEE só leitura (`listAssets`, `size`) para conferir estado.
 | 5 | `exportar_favorabilidade_ml.py` | `favorabilidade_ml/<modelo>_<alvo>_<mosaico>_<LxCy>` |
 | 6 | `src/show_mosaics/visualizar_favorabilidade_ml.js` | histogramas, curva área × limiar |
 | — | `maxent_alvos.js` | prévia Maxent no Code Editor |
+| 7 | `src/model_DL/` (skill `cnn-favorabilidade`) | CNN com pseudo-rótulos de `favorabilidade_ml` |
 | — | `docs/relatorio_avaliacao_modelos/` | relatório LaTeX |
 
 `baixar_presenca_maxent.py` é legado (mosaico de prioridade montado na hora,
@@ -70,6 +71,12 @@ hoje 80, shrinkage 0,1. Parâmetros do notebook (`RF_PARAMS`, `GTB_PARAMS`)
 espelham os do GEE: mude os dois juntos. Fundo sorteado = 3 × presença;
 saída `probability` × 10000 Int16; treino com todos os pontos, export por
 célula (grid sem solape). `p` ordena a área; 0,25 é o neutro (1:3).
+Estado (2026-10-22): fosfato no mosaico v1, RF 25/25 e GTB 25/25.
+
+Visualizador `src/show_mosaics/visualizar_favorabilidade_ml.js`: p RF/GTB,
+diferença, concordância p ≥ limiar (cinza só RF, ciano só GTB, magenta os
+dois), histogramas, curva área × limiar, legenda para prints. Cores e faixas
+em `VIS_P`, `VIS_DIF`, `COR_LIMIAR` (camada e legenda usam as mesmas).
 
 ## Relatório (`docs/relatorio_avaliacao_modelos/`)
 
@@ -78,6 +85,9 @@ célula (grid sem solape). `p` ordena a área; 0,25 é o neutro (1:3).
 `gerar_lista_34a.py` a partir do CSV explicado — regenerar, não editar.
 Texto colado de saída de célula precisa virar LaTeX (✔, `_`, ↑, ³⁺).
 Compilar com `latexmk -pdf` num diretório temporário e copiar o PDF.
+Seção "Mapas de favorabilidade RF e GTB" (`image/mapa_probabilidade_{RF,GTB}.png`):
+áreas magenta = candidatas a pseudo-amostras; manchas com borda reta seguem
+limites de cena (assinatura de cena), não usar sem conferir.
 
 ## Resultados de referência (2026-10-21)
 

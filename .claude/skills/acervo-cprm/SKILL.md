@@ -46,6 +46,12 @@ Visualizador combinado: `src/show_mosaics/visualizar_mosaico_final_acervo.js`.
 mvt, ouro, manganês) via `src/modeling/preparar_pontos_referencia.py` —
 ver skill `modelagem-favorabilidade` e `docs/pontos_referencia.md`.
 
+## Relatório
+
+`docs/relatorio_acervo_cprm/` (LaTeX, até 4 páginas): fluxo, filtros,
+contagens, assets e visualização. Figuras em `docs/figuras_acervo/`
+(`variaveis_UeTHMag.png`, `outras_variaveis_mineracao.png`).
+
 ## Próximos alvos (só se pedido)
 
 Seção 11 do md: calcário/dolomito primeiro, depois Pb–Zn–F–Ba;

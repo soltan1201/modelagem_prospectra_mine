@@ -70,7 +70,7 @@ flowchart TD
         AVA[avaliar_maxent.ipynb<br/>Maxent × RF × GTB, célula de fora]:::feito
         SHP[SHAP fora da amostra<br/>21 de 36 variáveis]:::feito
         MAX[exportar_favorabilidade_ml.py<br/>RF/GTB → favorabilidade_ml<br/>fosfato v1 25/25 cada]:::feito
-        DL[Deep learning<br/>amostras/patches onde RF e GTB p ≥ 0,5]:::afazer
+        DL[CNN · model_DL/<br/>patches 64 px · modelos A índices e B1 log-bandas<br/>scripts prontos, não rodados]:::andamento
         ENS[Ensemble Maxent<br/>P média, σ, P10/P50/P90, entropia]:::afazer
         RSK[Mapa de confiança +<br/>curva área-favorabilidade]:::afazer
         CMP[Campo em rodadas<br/>alvos P≈0,5 e σ alto]:::afazer
@@ -96,7 +96,7 @@ flowchart TD
     FIN --> AMS
     DEC --> AMS
     AMS --> AVA --> SHP --> MAX
-    MAX --> DL
+    MAX -- pseudo-rótulos --> DL
     ACV --> ING --> STK --> MAX
     HIP --> MAX --> ENS --> RSK --> CMP --> ALV
     CMP -- presenças / ausências --> ENS
@@ -157,6 +157,21 @@ AUC por ponto, validação deixando uma célula da grid de fora (fundo aleatóri
 
 Compilar com `latexmk -pdf <arquivo>.tex` dentro da pasta.
 
+### CNN de favorabilidade (`src/model_DL/`, plano em `plano_cnn.md`)
+
+| Script | Faz |
+|---|---|
+| `exportar_patches.py` | sorteia centros (ocorrências, pseudo-positivos onde RF e GTB têm p ≥ 0,5, negativos com p ≤ 0,05), divide por célula (teste = células das ocorrências de validação; 5 folds nas demais) e baixa patches 64 × 64 px do mosaico v1 por `computePixels` (sem task) em `.npz`, um arquivo por modelo |
+| `treinar_cnn.py` | PyTorch + timm: CNN pequena ou RegNetY-016 / EfficientNetV2-S / ResNet-50 / CoAtNet-0; BCE com rótulo suave; validação cruzada por fold; `auc_ponto` contra o GTB (0,84); `--teste` no fim |
+| `inferir_cnn.py` | janela deslizante por célula (passo 3 = 90 m ou 1 = 30 m), ensemble dos folds, GeoTIFF de p por célula |
+| `cnn_colab.ipynb` | os três scripts no Colab (importa os mesmos `.py`): Drive, GEE, exportação, treino, comparação das rodadas, teste, inferência e mapa |
+
+Modelo **A** = 15 índices espectrais + `swir_estimado` (16 canais); modelo
+**B1** = log da reflectância B01–B09 + emissividade B10–B14 + `swir_estimado`
+(15 canais). Dados no servidor em `/srv/almacen/db_images/patches_cnn` e
+rodadas em `/srv/almacen/db_images/runs_cnn` (variáveis `PATCHES_DIR`,
+`RUNS_DIR`).
+
 ## Estrutura
 
 ```
@@ -169,6 +184,8 @@ src/
 │                        avaliar_maxent.ipynb (Maxent × RF × GTB + SHAP),
 │                        exportar_favorabilidade_ml.py (RF/GTB no GEE);
 │                        README.md = diário dos testes de modelagem
+├── model_DL/            CNN: exportar_patches.py, treinar_cnn.py, inferir_cnn.py, plano_cnn.md,
+│                        cnn_colab.ipynb (mesmos scripts no Colab)
 ├── dowloadQGIS/         Acervo SIG SGB/CPRM: catálogo, download, .grd → tif, envio ao GEE
 │                        (ACERVO_CPRM_IRECE.md = documento central)
 ├── features_process/    biblioteca de índices espectrais (JS); exportar_mosaicos_indices
@@ -203,6 +220,7 @@ exportar), pulam assets já salvos e tasks ativas, e gravam
 | `add-indice-espectral` | novos índices espectrais |
 | `acervo-cprm` | dados SGB/CPRM até o GEE |
 | `modelagem-favorabilidade` | pontos de referência, amostras, Maxent × RF × GTB, SHAP, `favorabilidade_ml`, relatório |
+| `cnn-favorabilidade` | CNN em `src/model_DL/`: patches, pseudo-rótulos, divisão por célula, treino, inferência, Colab |
 | `gee-contas-assets` | rodízio de contas, tasks, cópia e remoção de assets |
 | `triagem-bibliografica` | filtro de artigos Scopus |
 
@@ -213,6 +231,8 @@ Cada skill tem `SKILL.md` (como usar) e `SPEC.md` (contrato).
 - Python 3 com `earthengine-api`, `pandas`, `numpy`, `scikit-learn`, `joblib`,
   `scipy`, `matplotlib` (o `xgboost` só para o notebook de treino; o `shap` só
   para a seção 9 do `avaliar_maxent.ipynb`).
+- CNN (`src/model_DL/`): `torch` (com a CUDA da GPU), `timm`; `rasterio` ou GDAL
+  para gravar os GeoTIFFs da inferência.
 - Credenciais GEE por conta em `~/.config/earthengine/<conta>/credentials`
   (ver `src/configure_account_projects_ee.py`). A superconta
   (`mapbiomas-brazil`) não lê nem escreve `mapbiomas-arida`.

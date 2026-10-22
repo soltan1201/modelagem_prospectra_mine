@@ -1,6 +1,6 @@
 ---
 name: train-swir-models
-description: Use when the user wants to train or debug the local PLS/XGBoost/GPR regression models that estimate ASTER SWIR bands (B04-B09) from VNIR+TIR, inspect metrics.json/best_params.json, or troubleshoot missing xgboost. Triggers on "train_swir_models", "treinar modelos SWIR", "PLS XGBoost GPR", "estimar bandas SWIR local".
+description: Use when the user wants to train or debug the local regression models (PLS/XGBoost/RF; legacy GPR) that estimate ASTER SWIR bands (B04-B09) from VNIR+TIR, the train_swir_models notebook (temporal test, per-scene normalization, saved figures), metrics.json/best_params.json, or missing xgboost. Triggers on "train_swir_models", "treinar modelos SWIR", "PLS XGBoost RF", "estimar bandas SWIR local", "teste temporal".
 ---
 
 # Train SWIR Models (local)
@@ -62,6 +62,16 @@ não deixe isso acontecer silenciosamente sem avisar antes.
 `models/best_params.json`, `models/metrics.json`. Se já existir uma rodada
 anterior que o usuário queira preservar (ex.: para comparar métricas),
 avise antes de rodar — o script não versiona/renomeia rodadas antigas.
+
+## Notebook atual (`train_swir_models.ipynb`)
+
+Pontos pareados zero-cloud, PLS × XGBoost × RF (o GPR saiu), teste temporal
+e normalização por cena (seções 8–10). Células numeradas `# [Célula N]`.
+Figuras com `salvar(fig, celula, nome)` (célula 2) a 450 dpi em
+`models/zero_cloud/figuras/c<célula>_<nome>.png`; as dispersões passam
+`celula=`/`nome=` ao `plot_scatter`. As células 11/11A param com mensagem se
+o kernel foi reiniciado e a célula 10 (PLS) não rodou. Várias figuras foram
+para o relatório do mosaico (`docs/figuras_contagem/`).
 
 ## O que este skill NÃO faz
 

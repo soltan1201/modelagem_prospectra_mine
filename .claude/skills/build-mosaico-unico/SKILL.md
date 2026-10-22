@@ -69,6 +69,14 @@ Etapa 3 — mosaico único juntando os dois bases (decidido em 2026-10-17):
   −23/−32/−33 % com `pareados`; 7 de 8 cenas com reta própria; ganhos
   OLS da célula 0,61–0,76.
 
+## Relatório do mosaico
+
+`docs/relatorio_mosaico_aster/` (LaTeX + PDF; figuras em `docs/figuras_contagem/`,
+`\graphicspath` absoluto): sensor, disponibilidade, nuvens, saturação do VNIR
+(pseudo-saturação com Landsat, seção 5.1), SWIR estimado, harmonização, v1 ×
+único, índices. Números da contagem vêm de `contagem_imagens_aster_semestre.csv`.
+Referências `[CONFERIR]`: Guha 2019, Gonzalez 2019, Chander 2013.
+
 ## Superconta
 
 Menu "Contas": rodízio arida (→ `mine/`) ou superconta (→
@@ -135,6 +143,7 @@ Visualizadores (`src/show_mosaics/`):
   pixel, ΔNDVI, viés % do SWIR, prévia de 4 regras, estatísticas, dispersão);
 - `visualizar_mosaico_unico_final.js` — etapa 3: medido × estimado
   (`swir_estimado`, `normalizacao`), índices, viés contra o com_swir base;
+- `mapa_localizacao.js` — biomas, estados e área de estudo (figura de localização);
 - `visualizar_comparar_mosaicos_finais.js` — v1 × único com cortina, 15
   índices, Δ, acervo CPRM.
 

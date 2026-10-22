@@ -55,7 +55,11 @@ Para o mosaico único (zero-cloud + preenchimento, com/sem SWIR) ver a skill
 (total, diurnas, noturnas, com_swir, cc_lt_max, apos_blacklist, zero_cloud,
 nuvem média/mediana por ano × semestre; `POR_CELULA` opcional), com os
 mesmos filtros de `montar_semestre`. Gráficos 2000–2008 × 2009–2020:
-`graficos_imagens_semestre.ipynb` (figuras em `figuras_contagem/`, 350 dpi).
+`graficos_imagens_semestre.ipynb` (figuras em `docs/figuras_contagem/`, 350 dpi,
+`FS` na célula 2 controla todas as fontes).
+
+Cena com SWIR real = tem `GAIN_COEFFICIENT_B04`. A banda B04 existe vazia nas
+cenas de 2009–2020, então testar `system:band_names` conta errado.
 
 ## Arquivo de referência
 
