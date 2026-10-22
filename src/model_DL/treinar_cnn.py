@@ -41,7 +41,8 @@ acurácia é alta só por prever "fundo" em tudo.
   ap, auc_amostra, brier          pseudo-rótulos de treino (uso_treino = 1)
   Parada antecipada: --metrica (padrão ap_ponto); fold sem ocorrência usa o ap.
 
-Saídas (--saida/<modelo>_<backbone>_<patch>px_<data>/)
+Saídas (--saida/<--nome>/ ou --saida/<modelo>_<backbone>_<patch>px_<data>/;
+nomes padronizados das rodadas em rodadas_treino.md)
   config.json, metricas_folds.csv, oof_validacao.csv (predição fora do fold),
   fold<k>.pt (melhor época), teste.csv / metricas_teste.json (com --teste)
 
@@ -380,6 +381,8 @@ def argumentos(lista=None):
     a.add_argument('--seed', type=int, default=42)
     a.add_argument('--dados', default=str(PATCHES_DIR))
     a.add_argument('--saida', default=str(RUNS_DIR))
+    a.add_argument('--nome', default='', help='nome da pasta da rodada (ex.: A_pequena_32); '
+                   'vazio = <modelo>_<backbone>_<patch>px_<data>')
     return a.parse_args(lista)
 
 
@@ -389,7 +392,10 @@ def main(lista=None):
     np.random.seed(args.seed)
     dispositivo = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     X, meta, canais = carregar(args.modelo, Path(args.dados))
-    pasta = Path(args.saida) / f'{args.modelo}_{args.backbone}_{args.patch}px_{datetime.now():%Y%m%d_%H%M}'
+    nome = args.nome or f'{args.modelo}_{args.backbone}_{args.patch}px_{datetime.now():%Y%m%d_%H%M}'
+    pasta = Path(args.saida) / nome
+    if args.nome and any(pasta.glob('*.pt')):
+        raise SystemExit(f'{pasta} já tem modelos (.pt) — use outro --nome ou apague a pasta.')
     pasta.mkdir(parents=True, exist_ok=True)
     (pasta / 'config.json').write_text(json.dumps({**vars(args), 'canais': canais, 'n': len(meta),
                                                    'dispositivo': str(dispositivo)}, indent=2))
