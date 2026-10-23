@@ -157,7 +157,8 @@ def imagem_canais():
 
     continuas = ind.addBands(logs).addBands(emis).reduceResolution(ee.Reducer.mean(), maxPixels=16)
     categ = v1.select(EXTRAS).toFloat().reduceResolution(ee.Reducer.mode(), maxPixels=16).rename(EXTRAS)
-    return continuas.addBands(categ).select(CANAIS).unmask(NODATA)
+    # float32 em todos os canais: o .log() sai em float64 e dobraria o tamanho do pedido (limite 48 MB)
+    return continuas.addBands(categ).select(CANAIS).unmask(NODATA).toFloat()
 
 
 def imagem_p():
