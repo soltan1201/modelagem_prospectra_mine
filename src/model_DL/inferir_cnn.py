@@ -45,9 +45,13 @@ import sys
 import time
 from pathlib import Path
 
-import ee
 import numpy as np
 import torch
+
+try:
+    import ee
+except ImportError:   # --tiles não usa GEE: roda num ambiente só com torch/rasterio
+    ee = None
 
 AQUI = Path(__file__).resolve().parent
 sys.path.append(str(AQUI))
@@ -319,6 +323,9 @@ def main(lista=None):
             {**vars(args), 'modelo': modelo_dados, 'canais': canais, 'patch': patch,
              'n_modelos': len(modelos)}, indent=2))
         return rodar_tiles(args, modelos, canais, patch, modelo_dados, pasta, dispositivo)
+    if ee is None:
+        raise SystemExit('Sem earthengine-api neste ambiente: use --tiles padrao (pedaços do baixar_tiles.py) '
+                         'ou rode num ambiente com o pacote ee.')
     ee.Initialize(project=args.projeto)
 
     todos = ep.CANAIS

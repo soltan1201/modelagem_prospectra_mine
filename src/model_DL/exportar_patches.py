@@ -71,14 +71,17 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import ee
 import numpy as np
 import pandas as pd
 
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.append(str(RAIZ))
 sys.path.append(str(RAIZ / 'modeling'))
-import maxent_fosfato as mx   # noqa: E402  (fórmulas dos índices e emissividade)
+try:
+    import ee
+    import maxent_fosfato as mx   # noqa: E402  (fórmulas dos índices e emissividade)
+except ImportError:   # ambiente sem earthengine-api (ex.: py_DL): só as constantes e funções locais
+    ee = mx = None
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 log = logging.getLogger(__name__)

@@ -5,6 +5,38 @@ O nome vira a pasta da rodada em `RUNS_DIR` e é o que se passa ao
 `inferir_cnn.py` depois. Se a pasta já tiver `.pt`, o treino para (não
 sobrescreve): use outro nome ou apague a pasta.
 
+## Por que validação cruzada em 5 folds (e não uma divisão treino/validação)
+
+Os folds não são do PyTorch: é validação cruzada, uma escolha do desenho (no
+TensorFlow/Keras seria o mesmo laço `for k in range(5): fit(treino ≠ k,
+validation_data = fold k)`). Os tutoriais usam uma divisão única
+(`validation_split`) porque têm muitos dados e amostras independentes; aqui
+nenhuma das duas condições vale.
+
+1. **Poucas ocorrências reais.** Só 2 dos 5 folds têm ocorrências de fosfato.
+   Numa divisão única a validação poderia cair em células sem nenhuma, e a
+   métrica mediria só a concordância com o RF/GTB, não a capacidade de achar
+   fosfato.
+2. **Autocorrelação espacial.** Patches vizinhos são quase iguais: dividir por
+   patch ao acaso põe vizinhos no treino e na validação e infla a métrica. A
+   divisão é por célula da grid 5 × 5, sem solape (centros a < 1 km de célula de
+   outro grupo descartados); com tão poucas células, uma divisão só dependeria
+   muito de quais células caíram na validação.
+3. **Estimativa mais estável.** Cada célula fora do teste é validada uma vez,
+   por um modelo que nunca a viu; o `oof_validacao.csv` junta essas predições e
+   dá a linha **FORA DO FOLD (todos)** usada para comparar backbones e A × B1.
+4. **Épocas do teste.** A média das melhores épocas dos folds fixa o
+   `--epocas` da rodada `_teste`; o conjunto de teste (células das ocorrências
+   de validação) nunca entra na parada antecipada.
+5. **Ensemble no mapa.** Sem `final.pt`, o `inferir_cnn.py` faz a média dos 5
+   `fold<k>.pt`, o que deixa o mapa menos ruidoso.
+
+Custo: cada rodada treina 5 modelos (≈ 5× o tempo de uma divisão única). Para
+triagem rápida dá para treinar só os folds com ocorrências (`--folds 0,1`); a
+escolha final usa os 5.
+
+## Caminhos e modelos
+
 - Patches: `/srv/almacen/db_images/patches_cnn/modelo_{A,B1}/` (`PATCHES_DIR`)
 - Rodadas: `/srv/almacen/db_images/runs_cnn/<nome>/` (`RUNS_DIR`)
 - Modelo **A** = 15 índices espectrais + `swir_estimado` (16 canais)
@@ -238,3 +270,59 @@ python baixar_tiles.py --modelo A --celulas L2C3
 
 Se mudar `--n` ou `--borda`, apague a pasta `canais_<modelo>` inteira antes:
 os nomes dos pedaços (`r<i>c<j>`) mudam de significado e misturar dá mapa errado.
+
+### Predição por rodada (`inferir_cnn.py --tiles padrao`)
+
+Cada rodada lê os pedaços do **seu** modelo de canais sozinha (`--tiles padrao`
+olha o `config.json` da rodada): rodadas `A_*` usam `tiles_cnn/canais_A/`,
+rodadas `B1_*` usam `tiles_cnn/canais_B1/`. Os pedaços do modelo têm de estar
+completos (900) antes.
+
+Sem `final.pt` (rodadas de CV), a predição é a média dos 5 `fold<k>.pt`
+(ensemble); nas rodadas `_teste`, usa o `final.pt`.
+
+Ordem sugerida: `--passo 3` numa célula (teste rápido, confere o mapa) →
+`--passo 3` na área toda (comparar as rodadas) → `--passo 1` só na escolhida.
+
+| Rodada | Pedaços | Teste (1 célula, passo 3) | Área toda (passo 3) |
+|---|---|---|---|
+| `A_pequena_32` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3` |
+| `B1_pequena_32` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3` |
+| `A_regnety_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3` |
+| `B1_regnety_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3` |
+| `A_effv2s_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3` |
+| `B1_effv2s_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3` |
+| `A_resnet50_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3` |
+| `B1_resnet50_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3` |
+| `A_coatnet0_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3` |
+| `B1_coatnet0_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3` |
+
+Saída: `runs_cnn/<rodada>/mapas_passo3/p_<LxCy>.tif` (e `pedacos/` por célula).
+Se faltar memória: `--sub 2` (divide cada pedaço em 2 × 2); na GPU, `--lote 128`.
+
+Todas as rodadas treinadas, em sequência, num `tmux` (pula as que não têm `.pt`):
+
+```bash
+tmux new -s predict
+conda activate py_DL
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+for nome in A_pequena_32 B1_pequena_32 A_regnety_64 B1_regnety_64 A_effv2s_64 B1_effv2s_64 \
+            A_resnet50_64 B1_resnet50_64 A_coatnet0_64 B1_coatnet0_64; do
+  run=/srv/almacen/db_images/runs_cnn/$nome
+  ls $run/*.pt >/dev/null 2>&1 || { echo "pulando $nome (sem .pt)"; continue; }
+  python inferir_cnn.py --run $run --tiles padrao --passo 3 2>&1 | tee $run/log_inferir_passo3.txt
+done
+# Ctrl+b, d para sair sem parar
+```
+
+Mapa final (passo 1) e subida ao GEE — só a rodada escolhida, de preferência a `_teste`:
+
+```bash
+python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1 \
+    2>&1 | tee /srv/almacen/db_images/runs_cnn/A_regnety_64_teste/log_inferir_passo1.txt
+python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
+```
+
+Para comparar no GEE as rodadas de CV também, suba cada uma com `--passo 3`
+(`python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/<rodada> --passo 3`).
+Conferir quantas células saíram: `ls /srv/almacen/db_images/runs_cnn/<rodada>/mapas_passo3/p_*.tif | wc -l` (25).

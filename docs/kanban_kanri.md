@@ -1,6 +1,6 @@
 # Quadro Kanri — Prospectra Irecê
 
-Atualizado em 2026-10-22. Cada item é um cartão: o título em negrito vai no
+Atualizado em 2026-10-23. Cada item é um cartão: o título em negrito vai no
 cartão, o texto depois do travessão vai na descrição. Etiquetas sugeridas entre
 colchetes: [mosaico], [swir], [acervo], [maxent], [dl], [incerteza], [infra].
 
@@ -70,17 +70,15 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [dl], [incerteza], [infra].
   seção 5 hoje só roda o Maxent.
 - **Favorabilidade dos outros alvos** [maxent] — carbonato, mvt, ouro,
   manganês: ligar em `ALVOS` do `exportar_favorabilidade_ml.py`.
-- **CNN: exportar os patches** [dl] — `model_DL/exportar_patches.py` no
-  servidor: opção 1 (só sortear) para conferir quantidades, depois opção 2.
-  No Colab: células 6–7 do `cnn_colab.ipynb`, ou subir `patches_cnn/` do
-  servidor para o Drive com rclone (`model_DL/guia_gdrive.md`).
-  Saída `/srv/almacen/db_images/patches_cnn/modelo_{A,B1}/`.
-- **CNN: linha de base e backbones** [dl] — `treinar_cnn.py`: CNN pequena 32 px
-  (A e B1), depois RegNetY-016, EfficientNetV2-S, ResNet-50, CoAtNet-0 a 64 px;
-  comparar `auc_ponto` com o GTB (0,84). Só 2 folds têm ocorrências reais.
-- **CNN: teste e mapa** [dl] — `--teste` uma vez com o melhor modelo (épocas =
-  média das melhores do CV); `inferir_cnn.py` passo 3 e depois passo 1; subir os
-  GeoTIFFs ao GEE e comparar com RF/GTB.
+- **CNN: teste e mapa final** [dl] — `--teste` uma vez com o melhor modelo
+  (épocas = média das melhores do CV), rodada `<modelo>_<backbone>_<patch>_teste`;
+  `inferir_cnn.py --tiles padrao --passo 1`; `subir_predicao_gee.py` →
+  `cnn_favorabilidade`; comparar com RF/GTB no visualizador. Comandos em
+  `model_DL/rodadas_treino.md`.
+- **Relatório de deep learning** [dl] — LaTeX em `docs/`, como os outros:
+  desenho (`plano_cnn.md`), por que 5 folds por célula (`rodadas_treino.md`),
+  métricas sem acurácia (ap_ponto, ap_ganho, Boyce, top10, AUC), tabela das
+  rodadas, teste, mapas CNN × RF/GTB e o vazamento dos pseudo-rótulos.
 - **Mapas RF/GTB só com pontos de treino** [dl] — `PAPEIS = ['treino']` numa
   coleção separada, para os pseudo-rótulos não verem os pontos de teste
   (hoje o teste da CNN não é independente).
@@ -140,12 +138,20 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [dl], [incerteza], [infra].
 
 ## Tarefas em processo
 
-- **CNN de favorabilidade** [dl] — plano e scripts prontos em `src/model_DL/`
-  (`plano_cnn.md`, `exportar_patches.py`, `treinar_cnn.py`, `inferir_cnn.py`)
-  e notebook `cnn_colab.ipynb` para o Colab (importa os mesmos scripts);
-  modelos A (15 índices) e B1 (14 bandas em log/emissividade), patch 64 px,
-  mosaico v1, divisão por célula (teste = células das ocorrências de
-  validação, 5 folds). Ainda não rodados.
+- **CNN: rodadas de treino** [dl] — 10 rodadas em `model_DL/rodadas_treino.md`
+  (CNN pequena 32 px e RegNetY-016 / EfficientNetV2-S / ResNet-50 / CoAtNet-0 a
+  64 px, modelos A e B1), validação cruzada em 5 folds por célula (justificativa
+  no cabeçalho do `.md`; triagem com `--folds 0,1`). Decide `ap_ponto` com
+  `ap_ganho`, `boyce`, `top10`, `auc_ponto` (GTB = 0,84). CNN pequena A: fold 0
+  `ap_ponto` 0,62 (22× o acaso), Boyce 0,54, top10 1,0. RegNetY divergia (NaN):
+  corrigido com bf16, clip de gradiente e `--amp 0`/`--lr 3e-4` de reserva.
+  Preencher a tabela comparativa do `.md`.
+- **CNN: pedaços dos canais para o mapa** [dl] — `baixar_tiles.py`: 900 pedaços
+  GeoTIFF por modelo em `/srv/almacen/db_images/tiles_cnn/canais_{A,B1}/`
+  (~0,75 GB por célula, ≈ 18 GB por modelo). A em andamento; B1 refeito depois
+  da correção do float64 (`imagem_canais` → `.toFloat()`). Conferir 900 por
+  modelo e `grep ERRO` no log. Depois: `inferir_cnn.py --tiles padrao --passo 3`
+  em todas as rodadas.
 - **Mosaico único etapa 2 — sem_swir_estimado** [mosaico] — 21/25 (L3C1
   concluído em 2026-10-16; faltam L3C2–L3C5).
 - **Relatórios LaTeX** [infra] — mosaico (`docs/relatorio_mosaico_aster/`),
@@ -158,6 +164,14 @@ colchetes: [mosaico], [swir], [acervo], [maxent], [dl], [incerteza], [infra].
 ---
 
 ## Tarefas feitas
+
+- **CNN: plano e scripts** [dl] — `src/model_DL/`: `plano_cnn.md`,
+  `exportar_patches.py`, `treinar_cnn.py`, `baixar_tiles.py`, `inferir_cnn.py`,
+  `subir_predicao_gee.py`, `cnn_colab.ipynb`, `guia_gdrive.md`,
+  `rodadas_treino.md`; skill `cnn-favorabilidade`.
+- **CNN: patches exportados** [dl] — `patches_cnn/modelo_{A,B1}/` com
+  ocorrências sem filtro, fundo aleatório e negativos difíceis (reexportados
+  para tirar a avaliação circular).
 
 - **Grid 5 × 5 com solape e área de estudo** [mosaico] — `grid_irece_5x5_solape100`,
   `data/area_estudo.shp`.

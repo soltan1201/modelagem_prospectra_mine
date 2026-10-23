@@ -70,7 +70,7 @@ flowchart TD
         AVA[avaliar_maxent.ipynb<br/>Maxent × RF × GTB, célula de fora]:::feito
         SHP[SHAP fora da amostra<br/>21 de 36 variáveis]:::feito
         MAX[exportar_favorabilidade_ml.py<br/>RF/GTB → favorabilidade_ml<br/>fosfato v1 25/25 cada]:::feito
-        DL[CNN · model_DL/<br/>patches 64 px · modelos A índices e B1 log-bandas<br/>scripts prontos, não rodados]:::andamento
+        DL[CNN · model_DL/<br/>patches A e B1 exportados · rodadas 5 folds<br/>pedaços para o mapa em andamento]:::andamento
         ENS[Ensemble Maxent<br/>P média, σ, P10/P50/P90, entropia]:::afazer
         RSK[Mapa de confiança +<br/>curva área-favorabilidade]:::afazer
         CMP[Campo em rodadas<br/>alvos P≈0,5 e σ alto]:::afazer
@@ -106,7 +106,7 @@ O ciclo da etapa 5 (ensemble → confiança → campo → reassimilação) segue
 de [docs/analise_fluxo_prospeccao_e_plano_irece.md](docs/analise_fluxo_prospeccao_e_plano_irece.md)
 (fases 0–5).
 
-## Estado (2026-10-22)
+## Estado (2026-10-23)
 
 | Coleção em `projects/mapbiomas-arida/mine/` | Script | Situação |
 |---|---|---|
@@ -122,6 +122,7 @@ de [docs/analise_fluxo_prospeccao_e_plano_irece.md](docs/analise_fluxo_prospecca
 | `pontos_referencia` | `modeling/preparar_pontos_referencia.py` | 1.103 pontos: fosfato 47 (antigo+cprm / cprm; treino / validação), carbonato 327, mvt 252, ouro 208, manganês 269 |
 | `maxent_amostras_<mosaico>_bandas_indices` | `modeling/maxent_fosfato.py` etapa 1 | 2 (único e v1), 31.860 amostras cada |
 | `favorabilidade_ml` | `modeling/exportar_favorabilidade_ml.py` | fosfato no mosaico v1: RF 25/25 e GTB 25/25 (21 variáveis do SHAP); visualizador `show_mosaics/visualizar_favorabilidade_ml.js` |
+| `cnn_favorabilidade` | `model_DL/subir_predicao_gee.py` | ainda não criada (sobe os mapas da CNN depois da predição) |
 | `pontos_fosfato`, `maxent_fosfato_amostras_teste_zero_cloud_2000_2008` | — | antigos; substituídos pelos de cima |
 
 ### Avaliação dos modelos (`src/modeling/avaliar_maxent.ipynb`)
@@ -162,16 +163,45 @@ Compilar com `latexmk -pdf <arquivo>.tex` dentro da pasta.
 | Script | Faz |
 |---|---|
 | `exportar_patches.py` | sorteia centros (ocorrências, pseudo-positivos onde RF e GTB têm p ≥ 0,5, negativos com p ≤ 0,05), divide por célula (teste = células das ocorrências de validação; 5 folds nas demais) e baixa patches 64 × 64 px do mosaico v1 por `computePixels` (sem task) em `.npz`, um arquivo por modelo |
-| `treinar_cnn.py` | PyTorch + timm: CNN pequena ou RegNetY-016 / EfficientNetV2-S / ResNet-50 / CoAtNet-0; BCE com rótulo suave; validação cruzada por fold; `auc_ponto` contra o GTB (0,84); `--teste` no fim |
-| `inferir_cnn.py` | janela deslizante por célula (passo 3 = 90 m ou 1 = 30 m), ensemble dos folds, GeoTIFF de p por célula |
+| `treinar_cnn.py` | PyTorch + timm: CNN pequena ou RegNetY-016 / EfficientNetV2-S / ResNet-50 / CoAtNet-0; BCE com rótulo suave; validação cruzada em 5 folds por célula; decide `ap_ponto` (com `ap_ganho`, Boyce, top10, `auc_ponto` × GTB 0,84 — nunca acurácia); AMP bf16 + clip de gradiente; `--nome` da rodada; `--teste` no fim |
+| `baixar_tiles.py` | canais do modelo (A ou B1) da área toda em pedaços GeoTIFF float32 (6 × 6 por célula, borda 32 px) em `/srv/almacen/db_images/tiles_cnn`, para a predição sem GEE |
+| `inferir_cnn.py` | janela deslizante por célula (passo 3 = 90 m ou 1 = 30 m), ensemble dos folds; com `--tiles padrao` lê os pedaços locais e grava p × 10000 em UInt16 por célula |
+| `subir_predicao_gee.py` | sobe os mapas de p ao bucket e ingere na coleção `projects/mapbiomas-arida/mine/cnn_favorabilidade` |
+| `rodadas_treino.md` | comandos de todas as rodadas (nomes, treino, teste, pedaços, predição, subida, tmux) |
 | `cnn_colab.ipynb` | os três scripts no Colab (importa os mesmos `.py`): Drive, GEE, exportação, treino, comparação das rodadas, teste, inferência e mapa |
 | `guia_gdrive.md` | subir `patches_cnn/` e `runs_cnn/` do servidor para o Drive com rclone (servidor sem navegador), para treinar no Colab |
 
 Modelo **A** = 15 índices espectrais + `swir_estimado` (16 canais); modelo
 **B1** = log da reflectância B01–B09 + emissividade B10–B14 + `swir_estimado`
 (15 canais). Dados no servidor em `/srv/almacen/db_images/patches_cnn` e
-rodadas em `/srv/almacen/db_images/runs_cnn` (variáveis `PATCHES_DIR`,
-`RUNS_DIR`).
+rodadas em `/srv/almacen/db_images/runs_cnn`, pedaços para o mapa em
+`/srv/almacen/db_images/tiles_cnn` (≈ 18 GB por modelo; variáveis
+`PATCHES_DIR`, `RUNS_DIR`, `TILES_DIR`).
+
+Por que 5 folds e não uma divisão treino/validação única (poucas ocorrências,
+autocorrelação espacial, estimativa fora do fold, épocas do teste, ensemble no
+mapa): cabeçalho do [`rodadas_treino.md`](src/model_DL/rodadas_treino.md) —
+base para o relatório de deep learning (a escrever).
+
+Estado: patches A e B1 exportados; rodadas de treino em andamento (CNN pequena
+A, fold 0: `ap_ponto` 0,62 = 22× o acaso, Boyce 0,54); pedaços dos canais
+baixando.
+
+#### Acompanhar a VRAM da GPU (treino e predição)
+
+```bash
+watch -n 1 nvidia-smi                                   # painel completo, a cada 1 s (Ctrl+c sai)
+nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu,temperature.gpu \
+    --format=csv -l 1                                   # uma linha por segundo
+nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv   # VRAM por processo
+nvtop                                                   # gráfico ao vivo (sudo pacman -S nvtop)
+```
+
+No `tmux`: `Ctrl+b %` divide a tela e o `watch` roda ao lado do treino
+(`Ctrl+b` + seta troca de painel). Memória perto do total → diminuir `--lote`
+(ou `--sub 2` na predição); `utilization.gpu` baixa com memória sobrando → a GPU
+espera o disco, pode aumentar `--lote`. O PyTorch guarda a memória reservada até
+o processo acabar: o `nvidia-smi` mostra o pico, não o uso do momento.
 
 ## Estrutura
 
@@ -185,7 +215,8 @@ src/
 │                        avaliar_maxent.ipynb (Maxent × RF × GTB + SHAP),
 │                        exportar_favorabilidade_ml.py (RF/GTB no GEE);
 │                        README.md = diário dos testes de modelagem
-├── model_DL/            CNN: exportar_patches.py, treinar_cnn.py, inferir_cnn.py, plano_cnn.md,
+├── model_DL/            CNN: exportar_patches.py, treinar_cnn.py, baixar_tiles.py, inferir_cnn.py,
+│                        subir_predicao_gee.py, plano_cnn.md, rodadas_treino.md (comandos),
 │                        cnn_colab.ipynb (mesmos scripts no Colab), guia_gdrive.md
 ├── dowloadQGIS/         Acervo SIG SGB/CPRM: catálogo, download, .grd → tif, envio ao GEE
 │                        (ACERVO_CPRM_IRECE.md = documento central)
@@ -221,7 +252,7 @@ exportar), pulam assets já salvos e tasks ativas, e gravam
 | `add-indice-espectral` | novos índices espectrais |
 | `acervo-cprm` | dados SGB/CPRM até o GEE |
 | `modelagem-favorabilidade` | pontos de referência, amostras, Maxent × RF × GTB, SHAP, `favorabilidade_ml`, relatório |
-| `cnn-favorabilidade` | CNN em `src/model_DL/`: patches, pseudo-rótulos, divisão por célula, treino, inferência, Colab |
+| `cnn-favorabilidade` | CNN em `src/model_DL/`: patches, pseudo-rótulos, divisão por célula (5 folds), rodadas de treino, pedaços dos canais, predição, subida ao GEE, Colab, relatório de DL |
 | `gee-contas-assets` | rodízio de contas, tasks, cópia e remoção de assets |
 | `triagem-bibliografica` | filtro de artigos Scopus |
 
