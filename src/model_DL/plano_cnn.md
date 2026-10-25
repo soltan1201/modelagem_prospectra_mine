@@ -13,9 +13,13 @@ passar o GTB na mesma validação: AUC por ponto com uma célula da grid de fora
 ## Rótulos
 
 - **Positivos:** áreas com p ≥ 0,5 no RF **e** no GTB (`favorabilidade_ml`),
-  sem manchas com borda de cena, rarefeitas; peso = p (rótulo suave).
-- **Negativos:** áreas com p baixo nos dois modelos.
-- **Ocorrências reais** (`pontos_referencia`, fosfato): só validação.
+  sem manchas com borda de cena, rarefeitas; alvo y = média(p_RF, p_GTB)
+  (rótulo suave), peso = 1.
+- **Negativos:** áreas com p baixo nos dois modelos (fáceis ≤ 0,05 e difíceis
+  em (0,05; 0,30]).
+- **Ocorrências reais** (`pontos_referencia`, fosfato): as de teste/validação
+  só avaliam, sem filtro de p; as de treino entram no treino só onde RF e GTB
+  ≥ 0,5 (magenta), com y = 1.
 - Cada patch guarda a célula da grid (validação célula de fora).
 
 ## Dois modelos, ambos com kernels 2D
@@ -93,18 +97,26 @@ o recorte direto como array NumPy; os patches são gravados em `.npz` locais.
 
 ### Amostras e rótulos
 
-| Origem | Como é sorteada | `y` (alvo) | `peso` | Observação |
-|---|---|---|---|---|
-| `ocorrencia` | cada ponto de fosfato de `pontos_referencia` + K centros deslocados dentro de 500 m | 1 | 1,0 | erro de posição de 250–1.000 m; `papel` treino/validação guardado |
-| `ambos` (magenta) | sorteio estratificado onde RF e GTB têm p ≥ 0,5 | média(p_RF, p_GTB) | 1,0 | pseudo-rótulo mais confiável |
-| `so_rf` (cinza) | p_RF ≥ 0,5 e p_GTB < 0,5 | média(p_RF, p_GTB) | 0,5 | um modelo só |
-| `so_gtb` (ciano) | p_GTB ≥ 0,5 e p_RF < 0,5 | média(p_RF, p_GTB) | 0,5 | um modelo só |
-| `negativo` | p_RF e p_GTB ≤ 0,05, estratificado por célula, longe (> 2 km) das ocorrências | média(p_RF, p_GTB) ≈ 0 | 1,0 | baixa probabilidade |
+Como está em `exportar_patches.py` (atualizado em 2026-10-23; o desenho
+inicial dava peso 0,5 a só RF / só GTB, que acabaram fora do treino).
 
-A incerteza do rótulo vai em dois campos: `y` contínuo (rótulo suave) e `peso`
-(confiança na origem). O treino usa BCE com alvo suave ponderada por `peso`.
-Faixa 0,05 < p < 0,5 fica de fora (zona incerta). Pseudo-positivos rarefeitos
-(distância mínima entre centros) depois do sorteio.
+| Origem | Como é sorteada | `y` (alvo) | `peso` | `uso_treino` |
+|---|---|---|---|---|
+| `ocorrencia_treino` | ponto de fosfato com `papel` = treino + 8 centros deslocados até 500 m | 1 | 1,0 | 1 só se em magenta (RF e GTB ≥ 0,5); senão 0 |
+| `ocorrencia_teste` | ponto com `papel` = validação + 8 centros, sem filtro de p | 1 | 1,0 | 0 (só avaliação) |
+| `ambos` (magenta) | RF e GTB com p ≥ 0,5; 120 por célula, rarefeitos a 1 km | média(p_RF, p_GTB) | 1,0 | 1 |
+| `negativo` | RF e GTB com p ≤ 0,05, > 2 km das ocorrências; 150 por célula | média(p_RF, p_GTB) ≈ 0 | 1,0 | 1 |
+| `negativo_dificil` | RF e GTB com p em (0,05; 0,30], longe das ocorrências; 100 por célula | média(p_RF, p_GTB) | 1,0 | 1 |
+| `fundo` | pixels aleatórios sem filtro de p; 80 por célula | média(p_RF, p_GTB) | 1,0 | 0 (só avaliação) |
+
+Negativos (fáceis, difíceis) e fundo rarefeitos a 1,5 km. Fora do treino: só
+RF / só GTB e a faixa 0,30 < p < 0,5 (zona incerta).
+
+A incerteza do rótulo vai só no `y` contínuo (rótulo suave); `peso` = 1 em
+todas as amostras (o campo continua nos `.npz` para pesos por origem no
+futuro). O treino usa BCE com alvo suave, ponderada por `peso` × fator de
+classe: `treinar_cnn.fatores_classe` iguala o peso total de positivos
+(y ≥ 0,5) e negativos no treino (a₊ = 0,5/π₊, a₋ = 0,5/(1 − π₊)).
 
 ### Canais por patch (64 × 64 px, 30 m, grade do mosaico v1)
 

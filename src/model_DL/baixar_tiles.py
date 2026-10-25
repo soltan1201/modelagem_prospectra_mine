@@ -22,12 +22,26 @@ Saída (TILES_DIR, padrão /srv/almacen/db_images/tiles_cnn)
   canais_<modelo>/indice_tiles.csv
 Retomável: pedaço já gravado é pulado.
 
-Espaço em disco antes de rodar:  df -h /srv/almacen
-  (área toda ≈ 24 GB por modelo sem compressão; com deflate, menos)
+Destino (--destino)
+  servidor  (padrão) os pedaços ficam em TILES_DIR.
+  drive     cada pedaço é gravado numa pasta de passagem (--dir, $TILES_DIR ou
+            ~/.cache/prospectra/tiles_cnn) e logo movido por `rclone moveto`
+            para --remoto (padrão $TILES_REMOTO ou gdrive:prospectra/tiles_cnn),
+            mesma estrutura canais_<modelo>/<LxCy>/; no disco fica no máximo um
+            pedaço por thread. Retomável pela listagem do remoto; pedaços que
+            ficaram no disco numa rodada interrompida sobem no início. Exige o
+            remote do rclone configurado (guia_gdrive.md). No Colab:
+            inferir_cnn.py --tiles /content/drive/MyDrive/prospectra/tiles_cnn/canais_A
+
+Espaço antes de rodar:  df -h /srv/almacen   (ou a cota do Drive)
+  (área toda ≈ 24 GB por modelo sem compressão; com deflate ≈ 18 GB — passa
+  dos 15 GB gratuitos do Drive)
 
 Uso
   python baixar_tiles.py --modelo A
   python baixar_tiles.py --modelo B1 --celulas L2C3,L3C3
+  python baixar_tiles.py --modelo A --destino drive
+  python baixar_tiles.py --modelo A --destino drive --remoto gdrive:outra/pasta
 """
 
 import argparse
@@ -47,6 +61,7 @@ sys.path.append(str(AQUI))
 import exportar_patches as ep   # noqa: E402  (canais, grade, grid, computePixels)
 
 TILES_DIR = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn')).expanduser()
+TILES_REMOTO = os.environ.get('TILES_REMOTO', 'gdrive:prospectra/tiles_cnn')
 LIMITE_PEDIDO = 48 * 1024 ** 2      # bytes por computePixels
 
 
@@ -59,9 +74,10 @@ def limites_celula(c):
     return c0, c1, l0, l1
 
 
-def pedacos(cel, n):
-    """(i, j, linha0, linha1, coluna0, coluna1) do miolo de cada pedaço, na grade global."""
-    c0, c1, l0, l1 = limites_celula(cel)
+def pedacos(cel, n, limites=None):
+    """(i, j, linha0, linha1, coluna0, coluna1) do miolo de cada pedaço, na grade global;
+    limites = (c0, c1, l0, l1) já conhecidos (cortar_tiles_drive.py), senão os da célula."""
+    c0, c1, l0, l1 = limites or limites_celula(cel)
     cols = np.linspace(c0, c1, n + 1).round().astype(int)
     lins = np.linspace(l0, l1, n + 1).round().astype(int)
     cols, lins = cols.tolist(), lins.tolist()   # int do Python: o computePixels serializa em JSON
@@ -108,16 +124,25 @@ def main(lista=None):
     a.add_argument('--borda', type=int, default=ep.PATCH // 2, help='px extras de cada lado')
     a.add_argument('--celulas', default='', help='ex.: L2C3,L3C3 (vazio = todas)')
     a.add_argument('--threads', type=int, default=4)
-    a.add_argument('--dir', default=str(TILES_DIR))
+    a.add_argument('--dir', default='', help=f'pasta local (padrão {TILES_DIR}; com --destino drive, '
+                   'só passagem: padrão $TILES_DIR ou ~/.cache/prospectra/tiles_cnn)')
+    a.add_argument('--destino', default='servidor', choices=['servidor', 'drive'])
+    a.add_argument('--remoto', default=TILES_REMOTO, help='remote:pasta do rclone (--destino drive)')
     a.add_argument('--projeto', default=ep.PROJETO_EE)
     args = a.parse_args(lista)
 
-    ee.Initialize(project=args.projeto)
+    ee.Initialize(project=args.projeto)    #"ee-solkancengine17"
     canais = ep.MODELOS[args.modelo]
     img = ep.imagem_canais().select(canais)
     grid = ep.ler_grid()
     nomes = [c.strip().upper() for c in args.celulas.split(',') if c.strip()] or sorted(grid)
-    raiz = Path(args.dir) / f'canais_{args.modelo}'
+    if args.dir:
+        pasta = Path(args.dir).expanduser()
+    elif args.destino == 'drive':
+        pasta = ep.pasta_passagem('TILES_DIR', 'tiles_cnn')
+    else:
+        pasta = TILES_DIR
+    raiz = pasta / f'canais_{args.modelo}'
     raiz.mkdir(parents=True, exist_ok=True)
 
     tarefas = []
@@ -137,8 +162,18 @@ def main(lista=None):
         raise SystemExit(f'Pedaço passa de 48 MB por pedido: aumente --n (hoje {args.n}).')
     pd.DataFrame(tarefas).to_csv(raiz / 'indice_tiles.csv', index=False)
 
-    faltam = [t for t in tarefas if not Path(t['arquivo']).exists()]
-    print(f'{len(tarefas) - len(faltam)} já baixados; faltam {len(faltam)} → {raiz}')
+    if args.destino == 'drive':
+        destino = f'{args.remoto.rstrip("/")}/canais_{args.modelo}'
+        ep.checar_rclone(destino)
+        for tmp in raiz.rglob('*.tmp.tif'):      # gravação interrompida
+            tmp.unlink()
+        ep.rclone('move', str(raiz), destino)       # índice + pedaços que ficaram no disco
+        no_remoto = ep.ja_no_remoto(destino)
+        faltam = [t for t in tarefas if str(Path(t['arquivo']).relative_to(raiz)) not in no_remoto]
+        print(f'{len(tarefas) - len(faltam)} já no Drive; faltam {len(faltam)} → {destino}')
+    else:
+        faltam = [t for t in tarefas if not Path(t['arquivo']).exists()]
+        print(f'{len(tarefas) - len(faltam)} já baixados; faltam {len(faltam)} → {raiz}')
 
     def um(t):
         x = baixar(img, canais, t['lin0'], t['col0'], t['altura'], t['largura'])
@@ -146,6 +181,9 @@ def main(lista=None):
                    {'modelo': args.modelo, 'celula': t['celula'], 'linha': t['linha'], 'coluna': t['coluna'],
                     'borda': args.borda, 'miolo_lin0': t['miolo_lin0'], 'miolo_col0': t['miolo_col0'],
                     'canais': ','.join(canais)})
+        if args.destino == 'drive':
+            arq = Path(t['arquivo'])
+            ep.rclone('moveto', str(arq), f'{destino}/{arq.relative_to(raiz).as_posix()}')
         return t, float(np.isfinite(x[0]).mean())
 
     t0, feitos = time.time(), 0

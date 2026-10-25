@@ -19,16 +19,18 @@ Janela deslizante
   GPU. Pixel central sem dado → sem predição (NaN).
 
 Saída (--saida, padrão <run>/mapas_passo<k>/)
-  p_<LxCy>.tif   GeoTIFF float32 (EPSG:4326, pixel = passo × 30 m), NaN sem dado;
+  p_<LxCy>_<rodada>.tif   GeoTIFF float32 (EPSG:4326, pixel = passo × 30 m), NaN sem dado;
                  com rasterio ou GDAL. Sem nenhum dos dois: p_<LxCy>.npz com a
                  matriz e a geotransformação.
+  Sufixo <rodada> = nome da pasta da rodada (ex.: A_coatnet0_64_teste), para
+  arquivos de rodadas diferentes não se confundirem fora da pasta.
   Para juntar: gdalbuildvrt mapa.vrt p_*.tif
 
 Modo pedaços (--tiles, recomendado para o mapa inteiro)
   Lê os GeoTIFFs de canais de baixar_tiles.py (sem GEE), prevê pedaço a pedaço
   (--sub divide o pedaço se faltar memória; --lote controla a GPU) e grava
-  <saida>/pedacos/<LxCy>/p_<LxCy>_r<i>c<j>.tif e, com os 36 prontos,
-  <saida>/p_<LxCy>.tif — UInt16, p × 10000, 0 = sem dado (convenção do
+  <saida>/pedacos/<LxCy>/p_<LxCy>_r<i>c<j>_<rodada>.tif e, com os 36 prontos,
+  <saida>/p_<LxCy>_<rodada>.tif — UInt16, p × 10000, 0 = sem dado (convenção do
   favorabilidade_ml), prontos para subir_predicao_gee.py.
 
 Uso
@@ -47,6 +49,16 @@ from pathlib import Path
 
 import numpy as np
 import torch
+
+try:
+    from tqdm.auto import tqdm          # barra no notebook (Colab) ou no terminal
+except ImportError:
+    class tqdm:                          # sem tqdm: segue sem barra
+        def __init__(self, *a, **k): pass
+        def update(self, n=1): pass
+        def set_postfix_str(self, s): pass
+        def write(self, s): print(s)
+        def close(self): pass
 
 try:
     import ee
@@ -273,30 +285,39 @@ def juntar(arquivos, saida):
 def rodar_tiles(args, modelos, canais, patch, modelo_dados, pasta, dispositivo):
     padrao = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn')) / f'canais_{modelo_dados}'
     raiz = padrao if args.tiles == 'padrao' else Path(args.tiles)
+    rodada = Path(args.run).resolve().name     # sufixo dos arquivos de saída
     celulas = sorted(p.name for p in raiz.iterdir() if p.is_dir())
     pedidas = [c.strip().upper() for c in args.celulas.split(',') if c.strip()]
     celulas = [c for c in celulas if not pedidas or c in pedidas]
     if not celulas:
         raise SystemExit(f'Nenhuma pasta de célula em {raiz} — rode baixar_tiles.py --modelo {modelo_dados}')
-    print(f'pedaços: {raiz} · {len(celulas)} células')
-    for cel in celulas:
-        entradas = sorted((raiz / cel).glob(f'{cel}_r*c*.tif'))
+    plano = {cel: sorted((raiz / cel).glob(f'{cel}_r*c*.tif')) for cel in celulas}
+    def saida_de(arq):
+        return pasta / 'pedacos' / arq.parent.name / f'p_{arq.stem}_{rodada}.tif'
+    pendentes = sum(not saida_de(a).exists() for v in plano.values() for a in v)
+    total = sum(len(v) for v in plano.values())
+    print(f'pedaços: {raiz} · {len(celulas)} células · {total - pendentes} de {total} pedaços já previstos')
+    barra = tqdm(total=pendentes, unit='pedaço', desc='inferência', dynamic_ncols=True)   # ETA = pedaços que faltam
+    for cel, entradas in plano.items():
         dest = pasta / 'pedacos' / cel
         dest.mkdir(parents=True, exist_ok=True)
         t0 = time.time()
         for arq in entradas:
-            saida = dest / f'p_{arq.name}'
+            saida = saida_de(arq)
             if saida.exists():
                 continue
+            barra.set_postfix_str(arq.stem)
             p, gt = inferir_tile(arq, canais, modelos, patch, args.passo, args.lote, dispositivo, args.sub)
             gravar_uint16(saida, p, gt)
-        feitos = sorted(dest.glob('p_*.tif'))
-        final = pasta / f'p_{cel}.tif'
+            barra.update()
+        feitos = sorted(dest.glob(f'p_*_{rodada}.tif'))
+        final = pasta / f'p_{cel}_{rodada}.tif'
         if len(feitos) == len(entradas) and entradas:
             juntar(feitos, final)
-            print(f'{cel}: {len(feitos)} pedaços → {final.name} ({time.time() - t0:.0f} s)')
+            barra.write(f'{cel}: {len(feitos)} pedaços → {final.name} ({time.time() - t0:.0f} s)')
         else:
-            print(f'{cel}: {len(feitos)}/{len(entradas)} pedaços (junção quando todos existirem)')
+            barra.write(f'{cel}: {len(feitos)}/{len(entradas)} pedaços (junção quando todos existirem)')
+    barra.close()
 
 
 def main(lista=None):
@@ -342,7 +363,7 @@ def main(lista=None):
           f'{len(nomes)} células · {dispositivo} → {pasta}')
 
     for nome in nomes:
-        arq = pasta / f'p_{nome}.tif'
+        arq = pasta / f'p_{nome}_{Path(args.run).resolve().name}.tif'
         if arq.exists() or arq.with_suffix('.npz').exists():
             print(f'{nome}: já existe — pulado')
             continue

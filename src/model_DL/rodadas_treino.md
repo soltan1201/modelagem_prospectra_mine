@@ -42,6 +42,8 @@ escolha final usa os 5.
 - Modelo **A** = 15 índices espectrais + `swir_estimado` (16 canais)
 - Modelo **B1** = log da reflectância B01–B09 + emissividade B10–B14 + `swir_estimado` (15 canais)
 - Rodar de dentro de `src/model_DL/`, de preferência num `tmux`.
+- Dois servidores (.250 com 8 GB e .251 com 12 GB): cópia dos dados e divisão
+  das rodadas em [`guia_dois_servidores.md`](guia_dois_servidores.md).
 
 ```bash
 cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL

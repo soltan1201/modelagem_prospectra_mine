@@ -70,7 +70,7 @@ flowchart TD
         AVA[avaliar_maxent.ipynb<br/>Maxent × RF × GTB, célula de fora]:::feito
         SHP[SHAP fora da amostra<br/>21 de 36 variáveis]:::feito
         MAX[exportar_favorabilidade_ml.py<br/>RF/GTB → favorabilidade_ml<br/>fosfato v1 25/25 cada]:::feito
-        DL[CNN · model_DL/<br/>patches A e B1 exportados · rodadas 5 folds<br/>pedaços para o mapa em andamento]:::andamento
+        DL[CNN · model_DL/<br/>patches A e B1 exportados · rodadas 5 folds<br/>pedaços para o mapa em andamento<br/>relatório: fundamentos escritos]:::andamento
         ENS[Ensemble Maxent<br/>P média, σ, P10/P50/P90, entropia]:::afazer
         RSK[Mapa de confiança +<br/>curva área-favorabilidade]:::afazer
         CMP[Campo em rodadas<br/>alvos P≈0,5 e σ alto]:::afazer
@@ -155,6 +155,7 @@ AUC por ponto, validação deixando uma célula da grid de fora (fundo aleatóri
 | [relatorio_mosaico_aster/](docs/relatorio_mosaico_aster/) | sensor, disponibilidade, nuvens, saturação do VNIR (teste com Landsat), SWIR estimado, harmonização, mosaicos v1 e único, índices | `docs/figuras_contagem/` |
 | [relatorio_avaliacao_modelos/](docs/relatorio_avaliacao_modelos/) | Maxent × RF × GTB, validação espacial, SHAP, mapas RF/GTB | `relatorio_avaliacao_modelos/image/` |
 | [relatorio_acervo_cprm/](docs/relatorio_acervo_cprm/) | aquisição do Acervo SIG SGB/CPRM até o GEE (4 páginas) | `docs/figuras_acervo/` |
+| [relatorio_deep_learning/](docs/relatorio_deep_learning/) | CNN de favorabilidade: objetivo e desafios do mapa de fosfato, entradas A × B1, classificação de *patch* × U-Net, *transfer learning*, pseudo-rótulos RF/GTB, validação e métricas; diagrama e tabelas das 5 arquiteturas (`fig_arquiteturas.tex`, `tab_arquiteturas.tex`); resultados a preencher | `relatorio_deep_learning/image/` |
 
 Compilar com `latexmk -pdf <arquivo>.tex` dentro da pasta.
 
@@ -166,10 +167,12 @@ Compilar com `latexmk -pdf <arquivo>.tex` dentro da pasta.
 | `treinar_cnn.py` | PyTorch + timm: CNN pequena ou RegNetY-016 / EfficientNetV2-S / ResNet-50 / CoAtNet-0; BCE com rótulo suave; validação cruzada em 5 folds por célula; decide `ap_ponto` (com `ap_ganho`, Boyce, top10, `auc_ponto` × GTB 0,84 — nunca acurácia); AMP bf16 + clip de gradiente; `--nome` da rodada; `--teste` no fim |
 | `baixar_tiles.py` | canais do modelo (A ou B1) da área toda em pedaços GeoTIFF float32 (6 × 6 por célula, borda 32 px) em `/srv/almacen/db_images/tiles_cnn`, para a predição sem GEE |
 | `inferir_cnn.py` | janela deslizante por célula (passo 3 = 90 m ou 1 = 30 m), ensemble dos folds; com `--tiles padrao` lê os pedaços locais e grava p × 10000 em UInt16 por célula |
+| `app_visualizar.py` | visualizador Streamlit dos mapas de p (roda no servidor, abre no navegador por túnel SSH): mapa da rodada ao lado de RGB artificial (falsa-cor VNIR, SWIR, TIR ou índices), canal, outra rodada ou diferença, com zoom sincronizado; ocorrências com p CNN × RF × GTB, limiar e histograma |
 | `subir_predicao_gee.py` | sobe os mapas de p ao bucket e ingere na coleção `projects/mapbiomas-arida/mine/cnn_favorabilidade` |
 | `rodadas_treino.md` | comandos de todas as rodadas (nomes, treino, teste, pedaços, predição, subida, tmux) |
 | `cnn_colab.ipynb` | os três scripts no Colab (importa os mesmos `.py`): Drive, GEE, exportação, treino, comparação das rodadas, teste, inferência e mapa |
 | `guia_gdrive.md` | subir `patches_cnn/` e `runs_cnn/` do servidor para o Drive com rclone (servidor sem navegador), para treinar no Colab |
+| `guia_dois_servidores.md` | dividir predição (e treino) entre o .250 (RTX 3070, 8 GB) e o .251 (RTX 3060, 12 GB): cópia dos dados, ambiente, rodadas por servidor e volta dos mapas |
 
 Modelo **A** = 15 índices espectrais + `swir_estimado` (16 canais); modelo
 **B1** = log da reflectância B01–B09 + emissividade B10–B14 + `swir_estimado`
@@ -180,8 +183,11 @@ rodadas em `/srv/almacen/db_images/runs_cnn`, pedaços para o mapa em
 
 Por que 5 folds e não uma divisão treino/validação única (poucas ocorrências,
 autocorrelação espacial, estimativa fora do fold, épocas do teste, ensemble no
-mapa): cabeçalho do [`rodadas_treino.md`](src/model_DL/rodadas_treino.md) —
-base para o relatório de deep learning (a escrever).
+mapa): cabeçalho do [`rodadas_treino.md`](src/model_DL/rodadas_treino.md).
+Fundamentos e justificativas do desenho (entradas, arquitetura sem U-Net,
+pré-treino, pseudo-rótulos, métricas) no
+[relatório de deep learning](docs/relatorio_deep_learning/); os resultados das
+rodadas entram nele quando o treino terminar.
 
 Estado: patches A e B1 exportados; rodadas de treino em andamento (CNN pequena
 A, fold 0: `ap_ponto` 0,62 = 22× o acaso, Boyce 0,54); pedaços dos canais
@@ -203,6 +209,44 @@ No `tmux`: `Ctrl+b %` divide a tela e o `watch` roda ao lado do treino
 espera o disco, pode aumentar `--lote`. O PyTorch guarda a memória reservada até
 o processo acabar: o `nvidia-smi` mostra o pico, não o uso do momento.
 
+#### Acesso SSH ao .251 (porta 2222)
+
+O `sshd` do .251 escuta na porta **2222**, não na 22. Sem `-p 2222` a conexão
+falha com `connect to host 192.168.25.251 port 22: Connection refused`.
+
+```bash
+# chave do .250 para o .251 (uma vez)
+ssh-copy-id -p 2222 superusuario@192.168.25.251
+
+ssh -p 2222 superusuario@192.168.25.251
+scp -P 2222 arquivo superusuario@192.168.25.251:/tmp/          # scp usa -P maiúsculo
+rsync -avh --progress -e 'ssh -p 2222' origem/ superusuario@192.168.25.251:destino/
+```
+
+Para não repetir a porta, criar um apelido em `~/.ssh/config` no .250:
+
+```
+Host geoserverI5 192.168.25.251
+    HostName 192.168.25.251
+    Port 2222
+    User superusuario
+    IdentityFile ~/.ssh/keyi9
+    IdentitiesOnly yes
+```
+
+O .251 só aceita login por chave, então o `ssh-copy-id` dá `Permission denied
+(publickey)`: a linha de `~/.ssh/keyi9.pub` é colada à mão no
+`~/.ssh/authorized_keys` do .251 (passo 2 do guia).
+
+Depois disso, `ssh geoserverI5`, `scp arquivo geoserverI5:/tmp/` e
+`rsync ... geoserverI5:destino/` funcionam sem `-p`. Como o IP também está na
+linha `Host`, os comandos do
+[`guia_dois_servidores.md`](src/model_DL/guia_dois_servidores.md) com
+`superusuario@192.168.25.251` passam a usar a porta 2222 sem mudança.
+
+Se der `Connection refused` mesmo com a porta 2222, conferir no .251:
+`systemctl status sshd` e `sudo ss -tlnp | grep sshd`.
+
 ## Estrutura
 
 ```
@@ -217,7 +261,9 @@ src/
 │                        README.md = diário dos testes de modelagem
 ├── model_DL/            CNN: exportar_patches.py, treinar_cnn.py, baixar_tiles.py, inferir_cnn.py,
 │                        subir_predicao_gee.py, plano_cnn.md, rodadas_treino.md (comandos),
-│                        cnn_colab.ipynb (mesmos scripts no Colab), guia_gdrive.md
+│                        cnn_colab.ipynb (mesmos scripts no Colab), guia_gdrive.md,
+│                        guia_dois_servidores.md, ranking_cnns_arquiteturas.md,
+│                        app_visualizar.py (Streamlit: mapas de p × RGB/índices)
 ├── dowloadQGIS/         Acervo SIG SGB/CPRM: catálogo, download, .grd → tif, envio ao GEE
 │                        (ACERVO_CPRM_IRECE.md = documento central)
 ├── features_process/    biblioteca de índices espectrais (JS); exportar_mosaicos_indices
@@ -230,7 +276,7 @@ src/
 ├── gee_tools.py         troca de conta, tasks
 └── configure_account_projects_ee.py   conta → projeto GEE
 docs/                    plano de prospecção sob incerteza, kanban, pontos de referência,
-                         relatórios LaTeX (mosaico, avaliação, acervo), pastas de figuras
+                         relatórios LaTeX (mosaico, avaliação, acervo, deep learning), pastas de figuras
                          + textos de referência
 resumo_metodologia.md    resumo da metodologia
 ```
@@ -264,7 +310,8 @@ Cada skill tem `SKILL.md` (como usar) e `SPEC.md` (contrato).
   `scipy`, `matplotlib` (o `xgboost` só para o notebook de treino; o `shap` só
   para a seção 9 do `avaliar_maxent.ipynb`).
 - CNN (`src/model_DL/`): `torch` (com a CUDA da GPU), `timm`; `rasterio` ou GDAL
-  para gravar os GeoTIFFs da inferência.
+  para gravar os GeoTIFFs da inferência; `streamlit` e `plotly` para o
+  `app_visualizar.py`.
 - Credenciais GEE por conta em `~/.config/earthengine/<conta>/credentials`
   (ver `src/configure_account_projects_ee.py`). A superconta
   (`mapbiomas-brazil`) não lê nem escreve `mapbiomas-arida`.

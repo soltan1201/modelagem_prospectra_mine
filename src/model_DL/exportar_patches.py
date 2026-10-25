@@ -56,16 +56,30 @@ treinados com todos os pontos (propriedade papeis = 'None'), inclusive os de
 validação que vão para o teste. Para um teste independente, refazer os mapas
 com PAPEIS = ['treino'] numa coleção separada e apontar ASSET_FAV para ela.
 
+Destino (perguntado nas opções 2 e 3)
+  servidor  (padrão) os .npz ficam em PASTA_SAIDA.
+  drive     cada .npz é gravado em PASTA_SAIDA e logo movido por `rclone moveto`
+            para PATCHES_REMOTO (padrão gdrive:prospectra/patches_cnn = PATCHES_DIR
+            do cnn_colab.ipynb), mesma estrutura modelo_<m>/; indice_patches.csv e
+            divisao.json ficam no disco e são copiados. Retomável pela listagem do
+            remoto; .npz que ficaram no disco numa rodada interrompida sobem no
+            início. Exige o remote do rclone configurado (guia_gdrive.md).
+            Sem PATCHES_DIR definido, a pasta local passa a ser
+            ~/.cache/prospectra/patches_cnn (roda fora do servidor).
+
 Uso: python exportar_patches.py   (1 = só sortear e gravar índice/divisão;
                                    2 = sortear e baixar os patches;
-                                   3 = apagar os .npz existentes e baixar de novo,
-                                       com confirmação digitando 'apagar')
+                                   3 = apagar os .npz existentes (no destino
+                                       escolhido) e baixar de novo, com
+                                       confirmação digitando 'apagar')
 """
 
 import json
 import logging
 import math
 import os
+import shutil
+import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -89,7 +103,9 @@ log = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 # PARÂMETROS
 # ═══════════════════════════════════════════════════════════════════════════
-PROJETO_EE    = 'mapbiomas-brazil'
+# projeto de cobrança/cota do GEE; outro com a variável de ambiente PROJETO_EE
+# (ex.: PROJETO_EE=ee-solkancengine17 python baixar_tiles.py …)
+PROJETO_EE    = os.environ.get('PROJETO_EE', 'mapbiomas-brazil')  # mapbiomas-brazil
 MINE          = 'projects/mapbiomas-arida/mine/'
 ASSET_MOSAICO = MINE + 'aster-mosaico-final'          # mosaico v1
 ASSET_FAV     = MINE + 'favorabilidade_ml'            # RF/GTB (probability × 10000)
@@ -100,6 +116,8 @@ ASSET_GRID    = MINE + 'grid_irece_5x5'               # sem solape
 # servidor: /srv/almacen/db_images/patches_cnn; outra pasta com a variável de
 # ambiente PATCHES_DIR (ex.: PATCHES_DIR=~/dados/patches python exportar_patches.py)
 PASTA_SAIDA   = Path(os.environ.get('PATCHES_DIR', '/srv/almacen/db_images/patches_cnn')).expanduser()
+# destino 'drive': remote:pasta do rclone (variável de ambiente PATCHES_REMOTO)
+PATCHES_REMOTO = os.environ.get('PATCHES_REMOTO', 'gdrive:prospectra/patches_cnn')
 
 PATCH         = 64          # px
 RES_15M       = 0.00013474729261792824                # grau, pixel do mosaico v1
@@ -385,8 +403,9 @@ def baixar_patch(img, lon, lat):
             log.debug(f'nova tentativa ({e})')
 
 
-def baixar_celula(img, df_cel, cel):
-    """Baixa os patches da célula uma vez e grava um .npz por modelo."""
+def baixar_celula(img, df_cel, cel, remoto=None):
+    """Baixa os patches da célula uma vez e grava um .npz por modelo; com remoto
+    (remote:pasta do rclone), move cada .npz para lá."""
     X = np.full((len(df_cel), len(CANAIS), PATCH, PATCH), np.nan, dtype=np.float16)
     ok = np.zeros(len(df_cel), bool)
     with ThreadPoolExecutor(N_THREADS) as ex:
@@ -398,7 +417,13 @@ def baixar_celula(img, df_cel, cel):
                 ok[i] = True
             except Exception as e:   # patch perdido não para a célula
                 log.warning(f'  {df_cel.iloc[i].id}: falhou ({e})')
-    X, d = X[ok], df_cel[ok].reset_index(drop=True)
+    gravar_modelos(X[ok], df_cel[ok].reset_index(drop=True), cel, remoto)
+    return int(ok.sum())
+
+
+def gravar_modelos(X, d, cel, remoto=None):
+    """X (N, len(CANAIS), PATCH, PATCH) + metadados d → um .npz por modelo
+    (também usado por tfrecord_para_npz.py)."""
     # colunas de texto como str (np.load sem allow_pickle)
     # texto como array de str (U), não de objetos: com pandas ≥ 3 o dtype de texto não é
     # 'object' e o to_numpy() devolveria objetos (np.load exigiria allow_pickle)
@@ -407,9 +432,13 @@ def baixar_celula(img, df_cel, cel):
     origem = X[:, CANAIS.index('origem')]
     for modelo, canais in MODELOS.items():
         idx = [CANAIS.index(c) for c in canais]
-        np.savez_compressed(arquivo_modelo(modelo, cel), X=X[:, idx], canais=np.array(canais),
-                            origem_patch=origem, **meta)
-    return int(ok.sum())
+        arq = arquivo_modelo(modelo, cel)
+        tmp = arq.with_name(arq.name + '.tmp')      # .npz só aparece completo (retomada confiável)
+        with open(tmp, 'wb') as f:
+            np.savez_compressed(f, X=X[:, idx], canais=np.array(canais), origem_patch=origem, **meta)
+        tmp.replace(arq)
+        if remoto:
+            rclone('moveto', str(arq), f'{remoto}/{arq.relative_to(PASTA_SAIDA).as_posix()}')
 
 
 def arquivo_modelo(modelo, cel):
@@ -417,28 +446,71 @@ def arquivo_modelo(modelo, cel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-def apagar_patches():
-    """Apaga os .npz de modelo_*/ (e índice/divisão antigos) depois de confirmar."""
+# GOOGLE DRIVE (rclone) — também usado por baixar_tiles.py
+# ═══════════════════════════════════════════════════════════════════════════
+def rclone(*args, saida=False):
+    """Roda o rclone; saida=True devolve o stdout."""
+    r = subprocess.run(['rclone', *args], check=True, text=True,
+                       stdout=subprocess.PIPE if saida else None)
+    return r.stdout if saida else None
+
+
+def checar_rclone(remoto):
+    """rclone instalado e remote configurado — conferido antes do sorteio/download, não no fim."""
+    if not shutil.which('rclone'):
+        raise SystemExit('rclone não instalado: sudo pacman -S rclone (ver guia_gdrive.md)')
+    nome = remoto.split(':')[0] + ':'
+    existentes = rclone('listremotes', saida=True).split()
+    if nome not in existentes:
+        raise SystemExit(f'Remote {nome} não configurado no rclone (existentes: {", ".join(existentes) or "nenhum"}).\n'
+                         f'Crie com `rclone config` (nome: {nome[:-1]}, storage: drive) ou aponte para outro '
+                         f'remote: PATCHES_REMOTO / --remoto <remote>:prospectra/... (ver guia_gdrive.md).')
+
+
+def pasta_passagem(variavel, nome):
+    """Pasta local do destino 'drive': $variavel se definida; senão ~/.cache/prospectra/<nome>
+    (só guarda arquivos até subirem, então serve em qualquer máquina)."""
+    return Path(os.environ.get(variavel) or Path.home() / '.cache' / 'prospectra' / nome).expanduser()
+
+
+def ja_no_remoto(destino):
+    """Caminhos relativos (pasta/arquivo) já presentes no remoto; vazio se a pasta não existe."""
+    try:
+        return set(rclone('lsf', '-R', '--files-only', destino, saida=True).split())
+    except subprocess.CalledProcessError:
+        rclone('mkdir', destino)     # falha aqui = remote não configurado (rclone config)
+        return set()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+def apagar_patches(remoto=None):
+    """Apaga os .npz de modelo_*/ (e índice/divisão antigos) depois de confirmar;
+    com remoto, também os de lá."""
     arquivos = sorted(PASTA_SAIDA.glob('modelo_*/patches_*.npz'))
     extras = [a for a in (PASTA_SAIDA / 'indice_patches.csv', PASTA_SAIDA / 'divisao.json') if a.exists()]
-    if not arquivos and not extras:
+    no_remoto = [a for a in ja_no_remoto(remoto) if a.startswith('modelo_') and a.endswith('.npz')
+                 or a in ('indice_patches.csv', 'divisao.json')] if remoto else []
+    if not arquivos and not extras and not no_remoto:
         print('Nada para apagar.')
         return True
     tamanho = sum(a.stat().st_size for a in arquivos) / 1e9
     print(f'\nVai apagar {len(arquivos)} arquivos .npz ({tamanho:.2f} GB) em {PASTA_SAIDA}/modelo_*/'
-          f' e {len(extras)} arquivo(s) de índice/divisão. Não dá para desfazer.')
+          f' e {len(extras)} arquivo(s) de índice/divisão'
+          + (f', mais {len(no_remoto)} arquivo(s) em {remoto}' if remoto else '') + '. Não dá para desfazer.')
     if input("Digite 'apagar' para confirmar: ").strip().lower() != 'apagar':
         print('Cancelado — nada foi apagado.')
         return False
     for a in arquivos + extras:
         a.unlink()
-    print(f'{len(arquivos) + len(extras)} arquivos apagados.')
+    for a in no_remoto:
+        rclone('deletefile', f'{remoto}/{a}')
+    print(f'{len(arquivos) + len(extras) + len(no_remoto)} arquivos apagados.')
     return True
 
 
 def main():
+    global PASTA_SAIDA
     ee.Initialize(project=PROJETO_EE)
-    PASTA_SAIDA.mkdir(parents=True, exist_ok=True)
     papeis = ee.ImageCollection(ASSET_FAV).filter(ee.Filter.eq('alvo', ALVO)).aggregate_array('papeis').distinct().getInfo()
     if 'None' in papeis:
         log.warning(f'{ASSET_FAV} foi treinado com todos os pontos (papeis = None): o teste não é '
@@ -447,8 +519,17 @@ def main():
     print('\n  1) só sortear (índice + divisão, sem baixar)\n  2) sortear e baixar os patches'
           '\n  3) APAGAR os patches existentes, sortear e baixar de novo')
     acao = input('Opção [1]: ').strip() or '1'
+    remoto = None
+    if acao in ('2', '3'):
+        print(f'\n  1) servidor ({PASTA_SAIDA})\n  2) Google Drive ({PATCHES_REMOTO}, por rclone)')
+        if (input('Destino [1]: ').strip() or '1') == '2':
+            remoto = PATCHES_REMOTO.rstrip('/')
+            checar_rclone(remoto)
+            PASTA_SAIDA = pasta_passagem('PATCHES_DIR', 'patches_cnn')
+    PASTA_SAIDA.mkdir(parents=True, exist_ok=True)
+    print(f'Pasta local: {PASTA_SAIDA}')
     if acao == '3':
-        if not apagar_patches():
+        if not apagar_patches(remoto):
             return
         acao = '2'
 
@@ -457,6 +538,9 @@ def main():
     df, divisao = montar_amostras(grid, pimg)
     df.to_csv(PASTA_SAIDA / 'indice_patches.csv', index=False)
     (PASTA_SAIDA / 'divisao.json').write_text(json.dumps(divisao, indent=2, ensure_ascii=False))
+    if remoto:
+        for nome in ('indice_patches.csv', 'divisao.json'):
+            rclone('copyto', str(PASTA_SAIDA / nome), f'{remoto}/{nome}')
     print('\n' + pd.crosstab(df.origem_amostra, df.conjunto, margins=True).to_string())
     for modelo, canais in MODELOS.items():
         print(f'modelo {modelo}: {len(df)} patches × {len(canais)} canais × {PATCH} × {PATCH} '
@@ -467,13 +551,23 @@ def main():
     img = imagem_canais()
     for modelo in MODELOS:
         (PASTA_SAIDA / f'modelo_{modelo}').mkdir(parents=True, exist_ok=True)
+    if remoto:
+        for tmp in PASTA_SAIDA.glob('modelo_*/*.npz.tmp'):    # gravação interrompida
+            tmp.unlink()
+        # .npz que ficaram no disco numa rodada interrompida
+        rclone('move', str(PASTA_SAIDA), remoto, '--include', 'modelo_*/patches_*.npz')
+        no_remoto = ja_no_remoto(remoto)
+        existe = lambda m, cel: arquivo_modelo(m, cel).relative_to(PASTA_SAIDA).as_posix() in no_remoto  # noqa: E731
+    else:
+        existe = lambda m, cel: arquivo_modelo(m, cel).exists()  # noqa: E731
     for cel, g in df.groupby('celula'):
-        if all(arquivo_modelo(m, cel).exists() for m in MODELOS):
+        if all(existe(m, cel) for m in MODELOS):
             log.info(f'{cel}: já existe — pulado (apague para refazer)')
             continue
         t0 = time.time()
-        n = baixar_celula(img, g, cel)
-        log.info(f'{cel}: {n}/{len(g)} patches → modelo_A/ e modelo_B1/ ({time.time() - t0:.0f} s)')
+        n = baixar_celula(img, g, cel, remoto)
+        log.info(f'{cel}: {n}/{len(g)} patches → modelo_A/ e modelo_B1/'
+                 + (f' em {remoto}' if remoto else '') + f' ({time.time() - t0:.0f} s)')
 
 
 if __name__ == '__main__':

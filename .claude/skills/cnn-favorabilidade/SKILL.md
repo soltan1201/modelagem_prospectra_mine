@@ -20,12 +20,18 @@ confere a sintaxe; não roda treino, exportação, download nem inferência.
 
 | Script | Papel |
 |---|---|
-| `exportar_patches.py` | sorteio dos centros, divisão por célula, patches 64 × 64 px por `ee.data.computePixels` (sem task) → `.npz` por célula e por modelo |
+| `exportar_patches.py` | sorteio dos centros, divisão por célula, patches 64 × 64 px por `ee.data.computePixels` (sem task) → `.npz` por célula e por modelo; destino servidor ou Drive (rclone) |
+| `exportar_patches_drive.py` | mesmo sorteio (importa `exportar_patches`), patches por `neighborhoodToArray` + `Export.table.toDrive` TFRecord (tasks, sem servidor/rclone) → pasta `patches_cnn_gee` no Drive da conta do EE |
+| `tfrecord_para_npz.py` | no Colab: TFRecord do Drive → `.npz` por célula e modelo + `indice_patches.csv`/`divisao.json` (célula 6b) |
+| `exportar_tiles_drive.py` | canais A/B1 por célula (com borda) por `Export.image.toDrive` → pasta `tiles_cnn_gee`; uma task por célula |
+| `cortar_tiles_drive.py` | no Colab: corta os GeoTIFF por célula nos pedaços do `baixar_tiles` em `TILES_DIR` (célula 5 do `cnn_predict_colab.ipynb`) |
 | `treinar_cnn.py` | treino com validação cruzada em 5 folds (`--nome` = pasta da rodada); `--teste` no fim |
-| `baixar_tiles.py` | canais do modelo (A ou B1) da área toda em pedaços GeoTIFF float32 (6 × 6 por célula, borda 32 px) |
+| `baixar_tiles.py` | canais do modelo (A ou B1) da área toda em pedaços GeoTIFF float32 (6 × 6 por célula, borda 32 px); `--destino drive` sobe cada pedaço por rclone |
 | `inferir_cnn.py` | janela deslizante; `--tiles padrao` lê os pedaços locais da rodada (A ou B1 pelo `config.json`) e grava p × 10000 UInt16 por célula; sem `--tiles`, baixa do GEE |
 | `subir_predicao_gee.py` | bucket + ingestão na coleção `cnn_favorabilidade` |
-| `cnn_colab.ipynb` | o fluxo no Colab, **importando** os `.py` (não copia código) |
+| `cnn_colab.ipynb` | só treino no Colab, **importando** os `.py`: TFRecord → npz (`tfrecord_para_npz`), rodadas do `rodadas_treino.md` por menu, comparação, teste. Exportações rodam como `.py` na máquina local; predição no `cnn_predict_colab.ipynb` |
+| `cnn_predict_colab.ipynb` | mapa no Colab: corta os tiles (`cortar_tiles_drive`), `inferir_cnn --tiles` (passo 3/1), mapa com os pontos de fosfato e percentil do p, `subir_predicao_gee` opcional |
+| `copiar_tifs_colab.ipynb` | Colab, uma célula: copia `.tif` de pasta compartilhada por outra conta para pasta própria (liberar a cota da origem) |
 | `rodadas_treino.md` | convenção `<modelo>_<backbone curto>_<patch>` (+ `_teste`), comandos, tmux, refazer rodada, VRAM |
 | `guia_gdrive.md` | subir `patches_cnn/` e `runs_cnn/` do servidor para o Drive com rclone |
 
@@ -87,3 +93,6 @@ rodadas `/srv/almacen/db_images/runs_cnn/<nome>/`, pedaços
 `TILES_DIR`). Pedaços: 900 por modelo (25 × 36), ~0,75 GB por célula
 (≈ 18 GB por modelo). Colab: `MyDrive/prospectra/patches_cnn` e `.../runs_cnn`
 (célula 2); servidor → Drive por `rclone copy`, ver `guia_gdrive.md`.
+Sem servidor: patches e pedaços baixados em qualquer máquina direto para o
+Drive (destino drive), treino e mapa no Colab (`USAR_TILES`, `TILES_DIR`) —
+seção 0 do `guia_gdrive.md`.

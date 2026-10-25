@@ -4,7 +4,7 @@ p_<LxCy>.tif ao bucket do Cloud Storage e cria a ingestão como imagem numa
 ImageCollection, no mesmo formato do favorabilidade_ml (banda 'probability' =
 p × 10000, 0 = sem dado) para comparar com RF/GTB no visualizar_favorabilidade_ml.js.
 
-Entrada   <run>/mapas_passo<k>/p_<LxCy>.tif   (UInt16, EPSG:4326)
+Entrada   <run>/mapas_passo<k>/p_<LxCy>_<rodada>.tif   (UInt16, EPSG:4326)
 Destino   COLECAO/<rodada>_p<k>_<LxCy>  com propriedades modelo (CNN_<backbone>),
           alvo, mosaico, celula, rodada, passo, canais (A/B1), escala_p
 Bucket    BUCKET (o mesmo do acervo); cobrança no PROJETO_STORAGE — credenciais
@@ -20,6 +20,7 @@ Uso
 import argparse
 import csv
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -67,6 +68,7 @@ def main(lista=None):
     a = argparse.ArgumentParser(description='Sobe os mapas de p da CNN para uma ImageCollection')
     a.add_argument('--run', required=True)
     a.add_argument('--passo', type=int, default=1)
+    a.add_argument('--mapas', default='', help='pasta dos p_<LxCy>_<rodada>.tif (padrão: <run>/mapas_passo<k>)')
     a.add_argument('--colecao', default=COLECAO)
     a.add_argument('--bucket', default=BUCKET)
     a.add_argument('--projeto', default=PROJETO_EE)
@@ -74,7 +76,7 @@ def main(lista=None):
     args = a.parse_args(lista)
 
     run = Path(args.run)
-    pasta = run / f'mapas_passo{args.passo}'
+    pasta = Path(args.mapas) if args.mapas else run / f'mapas_passo{args.passo}'
     arquivos = sorted(pasta.glob('p_L*C*.tif'))
     if not arquivos:
         raise SystemExit(f'Nenhum p_<LxCy>.tif em {pasta} — rode inferir_cnn.py --tiles … --passo {args.passo}')
@@ -92,7 +94,7 @@ def main(lista=None):
     bucket = cliente_storage().bucket(bucket_nome)
     registro = []
     for arq in arquivos:
-        cel = arq.stem.removeprefix('p_')
+        cel = re.match(r'p_(L\d+C\d+)', arq.name).group(1)
         nome = f'{rodada}_p{args.passo}_{cel}'.replace('.', '_')
         asset = f'{args.colecao}/{nome}'
         try:
