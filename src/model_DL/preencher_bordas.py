@@ -25,11 +25,22 @@ Preenchimento (--preencher), sem tocar nos originais:
   Saída: <mapas>_preenchido/p_<LxCy>_<rodada>.tif (mesmo formato: UInt16,
   p × 10000, 0 = sem dado) e relatorio_bordas.csv com a origem de cada px.
 
-Uso
-  python preencher_bordas.py --mapas /srv/almacen/db_images/runs_cnn/B1_coatnet0_64/mapas_passo3 \
-                             --tiles /srv/almacen/db_images/tiles_cnn/canais_B1
-  python preencher_bordas.py --mapas <pasta> --preencher                 (só vizinhas)
-  python preencher_bordas.py --mapas <pasta> --preencher --interpolar 10 (+ interpolação)
+Uso (servidor; troque RODADA, MOD = A ou B1 conforme a rodada, e PASSO)
+  cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+  RUNS=/srv/almacen/db_images/runs_cnn; TILES=/srv/almacen/db_images/tiles_cnn
+  RODADA=B1_coatnet0_64; MOD=B1; PASSO=3
+
+  # 1. diagnóstico (não grava mapas)
+  python preencher_bordas.py --mapas $RUNS/$RODADA/mapas_passo$PASSO --tiles $TILES/canais_$MOD
+  # 2. preencher só com as vizinhas
+  python preencher_bordas.py --mapas $RUNS/$RODADA/mapas_passo$PASSO --preencher
+  # 3. vizinhas + interpolação até 10 px
+  python preencher_bordas.py --mapas $RUNS/$RODADA/mapas_passo$PASSO --preencher --interpolar 10
+
+  # TODAS as rodadas com .pt e mapas (sem --mapas): RUNS_DIR e TILES_DIR, canais pelo config.json
+  python preencher_bordas.py                                    (diagnóstico)
+  python preencher_bordas.py --preencher --interpolar 10        (preenche todas)
+  → resumo em $RUNS/relatorio_bordas_rodadas.csv
 """
 
 import argparse
@@ -77,21 +88,15 @@ def cobertura_entrada(pasta_celula, perfil):
     return cob.astype(bool)
 
 
-def main(lista=None):
+def processar(pasta, tiles, preencher, interpolar):
+    """Diagnóstico (e preenchimento) de uma pasta mapas_passo<k>; devolve a tabela por célula."""
     import rasterio
-    a = argparse.ArgumentParser(description='Faixas sem p na beira das células: diagnóstico e preenchimento')
-    a.add_argument('--mapas', required=True, help='pasta mapas_passo<k> com os p_<LxCy>[_<rodada>].tif')
-    a.add_argument('--tiles', default='', help='pasta canais_<modelo> (diz se a faixa é buraco da entrada)')
-    a.add_argument('--preencher', action='store_true', help='grava <mapas>_preenchido/ com as vizinhas')
-    a.add_argument('--interpolar', type=int, default=0, help='px máximos de interpolação no que sobrar (0 = não)')
-    args = a.parse_args(lista)
-
-    pasta = Path(args.mapas)
     arquivos = {celula_de(f): f for f in sorted(pasta.glob('p_L*C*.tif')) if celula_de(f)}
     if not arquivos:
-        raise SystemExit(f'Nenhum p_<LxCy>.tif em {pasta}')
+        print(f'{pasta}: nenhum p_<LxCy>.tif — pulada')
+        return None
     saida = pasta.with_name(pasta.name + '_preenchido')
-    if args.preencher:
+    if preencher:
         saida.mkdir(exist_ok=True)
 
     linhas = []
@@ -105,8 +110,8 @@ def main(lista=None):
         r = {'celula': nome, 'px': p.size, 'sem_p': int(sem_p.sum()),
              **{f'faixa_{s}': faixa(valido, s) for s in 'NSOL'}}
 
-        if args.tiles:
-            cob = cobertura_entrada(Path(args.tiles) / nome, perfil)
+        if tiles and (Path(tiles) / nome).is_dir():
+            cob = cobertura_entrada(Path(tiles) / nome, perfil)
             r['sem_p_com_entrada'] = int((sem_p & cob).sum())      # > 0: falha da predição
 
         vizinhas = np.zeros_like(p)
@@ -120,14 +125,14 @@ def main(lista=None):
         usa_viz = sem_p & (vizinhas > 0)
         r['preenchido_vizinhas'] = int(usa_viz.sum())
 
-        if args.preencher:
+        if preencher:
             novo = np.where(usa_viz, vizinhas, p)
             r['preenchido_interpolacao'] = 0
-            if args.interpolar:
+            if interpolar:
                 from rasterio.fill import fillnodata
                 antes = novo == 0
                 novo = fillnodata(novo.astype(np.float32), mask=(novo > 0).astype(np.uint8),
-                                  max_search_distance=args.interpolar, smoothing_iterations=0)
+                                  max_search_distance=interpolar, smoothing_iterations=0)
                 novo = np.clip(np.round(novo), 0, 10000).astype(np.uint16)
                 r['preenchido_interpolacao'] = int((antes & (novo > 0)).sum())
             r['sem_p_final'] = int((novo == 0).sum())
@@ -135,17 +140,61 @@ def main(lista=None):
                 d.write(novo.astype(perfil['dtype']), 1)
                 d.set_band_description(1, 'probability')
                 d.update_tags(escala='p x 10000', nodata='0', preenchido='vizinhas'
-                              + (f'+interpolacao_{args.interpolar}px' if args.interpolar else ''))
+                              + (f'+interpolacao_{interpolar}px' if interpolar else ''))
         linhas.append(r)
-        print(' · '.join(f'{k} {v}' for k, v in r.items()))
+        print('  ' + ' · '.join(f'{k} {v}' for k, v in r.items()))
 
     tab = pd.DataFrame(linhas)
-    destino = (saida if args.preencher else pasta) / 'relatorio_bordas.csv'
+    destino = (saida if preencher else pasta) / 'relatorio_bordas.csv'
     tab.to_csv(destino, index=False)
-    print(f'\n{destino}')
+    print(f'  → {destino}')
     if 'sem_p_com_entrada' in tab and tab.sem_p_com_entrada.sum():
-        print('ATENÇÃO: há px sem p onde os canais têm dado — falha da predição, não do mosaico: '
+        print('  ATENÇÃO: há px sem p onde os canais têm dado — falha da predição, não do mosaico: '
               'apague os pedaços dessas células e rode inferir_cnn.py de novo (só eles são refeitos).')
+    return tab
+
+
+def main(lista=None):
+    import json
+    import os
+    a = argparse.ArgumentParser(description='Faixas sem p na beira das células: diagnóstico e preenchimento')
+    a.add_argument('--mapas', default='', help='uma pasta mapas_passo<k>; vazio = todas as rodadas com .pt em --runs')
+    a.add_argument('--runs', default=os.environ.get('RUNS_DIR', '/srv/almacen/db_images/runs_cnn'))
+    a.add_argument('--tiles', default='', help='pasta canais_<modelo> (só com --mapas); diz se a faixa é '
+                   'buraco da entrada. Em todas as rodadas: TILES_DIR/canais_<modelo do config.json>')
+    a.add_argument('--tiles-dir', default=os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn'))
+    a.add_argument('--preencher', action='store_true', help='grava <mapas>_preenchido/ com as vizinhas')
+    a.add_argument('--interpolar', type=int, default=0, help='px máximos de interpolação no que sobrar (0 = não)')
+    args = a.parse_args(lista)
+
+    if args.mapas:
+        if processar(Path(args.mapas), args.tiles, args.preencher, args.interpolar) is None:
+            raise SystemExit(f'Nenhum p_<LxCy>.tif em {args.mapas}')
+        return
+
+    # todas as rodadas com modelo salvo (.pt) e alguma pasta mapas_passo<k>
+    resumo = []
+    for run in sorted(p for p in Path(args.runs).iterdir() if p.is_dir() and any(p.glob('*.pt'))):
+        cfg = json.loads((run / 'config.json').read_text()) if (run / 'config.json').exists() else {}
+        modelo = cfg.get('modelo') or run.name.split('_')[0]
+        tiles = Path(args.tiles_dir) / f'canais_{modelo}'
+        for pasta in sorted(run.glob('mapas_passo*')):
+            if not pasta.is_dir() or not pasta.name.removeprefix('mapas_passo').isdigit():
+                continue                                     # pula as _preenchido
+            print(f'\n═══ {run.name} / {pasta.name} (canais_{modelo})')
+            tab = processar(pasta, str(tiles) if tiles.is_dir() else '', args.preencher, args.interpolar)
+            if tab is not None:
+                resumo.append({'rodada': run.name, 'mapas': pasta.name, 'celulas': len(tab),
+                               'sem_p': int(tab.sem_p.sum()),
+                               'sem_p_com_entrada': int(tab.get('sem_p_com_entrada', pd.Series(dtype=int)).sum()),
+                               'preenchido_vizinhas': int(tab.preenchido_vizinhas.sum()),
+                               'sem_p_final': int(tab['sem_p_final'].sum()) if 'sem_p_final' in tab else None})
+    if not resumo:
+        raise SystemExit(f'Nenhuma rodada com .pt e mapas_passo<k> em {args.runs}')
+    r = pd.DataFrame(resumo)
+    r.to_csv(Path(args.runs) / 'relatorio_bordas_rodadas.csv', index=False)
+    print('\n' + r.to_string(index=False))
+    print(f'→ {Path(args.runs) / "relatorio_bordas_rodadas.csv"}')
 
 
 if __name__ == '__main__':
