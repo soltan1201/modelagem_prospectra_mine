@@ -74,12 +74,14 @@ def subir_pasta(run, passo, pasta, args, bucket, bucket_nome, prefixo):
         return
     cfg = json.loads((run / 'config.json').read_text())
     rodada = run.name
-    print(f'== {rodada} passo {passo}: {len(arquivos)} mapas')
+    preenchido = pasta.name.endswith('_preenchido')     # saída do preencher_bordas.py
+    sufixo = '_preenchido' if preenchido else ''
+    print(f'== {rodada} passo {passo}{sufixo}: {len(arquivos)} mapas')
 
     registro = []
     for arq in arquivos:
         cel = re.match(r'p_(L\d+C\d+)', arq.name).group(1)
-        nome = f'{rodada}_p{passo}_{cel}'.replace('.', '_')
+        nome = f'{rodada}_p{passo}{sufixo}_{cel}'.replace('.', '_')
         asset = f'{args.colecao}/{nome}'
         try:
             ee.data.getAsset(asset)
@@ -89,11 +91,12 @@ def subir_pasta(run, passo, pasta, args, bucket, bucket_nome, prefixo):
                 continue
         except ee.EEException:
             pass
-        blob = f'{prefixo}/{rodada}/{arq.name}' if prefixo else f'{rodada}/{arq.name}'
+        blob = f'{rodada}/{pasta.name}/{arq.name}'
+        blob = f'{prefixo}/{blob}' if prefixo else blob
         bucket.blob(blob).upload_from_filename(str(arq))
         uri = f'gs://{bucket_nome}/{blob}'
         props = {'modelo': f'CNN_{cfg.get("backbone")}', 'alvo': ALVO, 'mosaico': MOSAICO, 'celula': cel,
-                 'rodada': rodada, 'passo': passo, 'canais': cfg.get('modelo'),
+                 'rodada': rodada, 'passo': passo, 'preenchido': int(preenchido), 'canais': cfg.get('modelo'),
                  'patch': cfg.get('patch'), 'escala_p': 10000}
         try:
             resp = ee.data.startIngestion(ee.data.newTaskId()[0], manifesto(asset, uri, props),
@@ -104,7 +107,7 @@ def subir_pasta(run, passo, pasta, args, bucket, bucket_nome, prefixo):
             print(f'  {nome}: ERRO {e}')
             registro.append({'asset': asset, 'uri': uri, 'status': f'erro: {str(e)[:100]}'})
 
-    arq_reg = run / f'registro_subida_gee_p{passo}_{datetime.now():%Y%m%d_%H%M}.csv'
+    arq_reg = run / f'registro_subida_gee_p{passo}{sufixo}_{datetime.now():%Y%m%d_%H%M}.csv'
     with open(arq_reg, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=['asset', 'uri', 'status', 'task_id'], extrasaction='ignore')
         w.writeheader()
@@ -122,6 +125,8 @@ def main(lista=None):
     a.add_argument('--bucket', default=BUCKET)
     a.add_argument('--projeto', default=PROJETO_EE)
     a.add_argument('--sobrescrever', action='store_true')
+    a.add_argument('--com-originais', action='store_true',
+                   help='sobe também mapas_passo<k> quando existe mapas_passo<k>_preenchido')
     args = a.parse_args(lista)
 
     # (run, passo, pasta) a subir
@@ -134,7 +139,12 @@ def main(lista=None):
         alvos = []
         for run in runs:
             for pasta in sorted(run.glob('mapas_passo*')):
-                passo = int(pasta.name.removeprefix('mapas_passo'))
+                m = re.fullmatch(r'mapas_passo(\d+)(_preenchido)?', pasta.name)
+                if not (pasta.is_dir() and m):
+                    continue
+                passo = int(m.group(1))
+                if not m.group(2) and not args.com_originais and pasta.with_name(pasta.name + '_preenchido').is_dir():
+                    continue                                 # já sobe a versão preenchida
                 if args.passo is None or passo == args.passo:
                     if not (run / 'config.json').exists():
                         print(f'{run.name}: sem config.json — pulado')
@@ -142,7 +152,7 @@ def main(lista=None):
                     alvos.append((run, passo, pasta))
     if not alvos:
         raise SystemExit('Nenhuma pasta mapas_passo<k> encontrada — rode inferir_cnn.py --tiles antes')
-    print('A subir:', ', '.join(f'{r.name}/p{k}' for r, k, _ in alvos))
+    print('A subir:', ', '.join(f'{r.name}/{d.name}' for r, _, d in alvos))
 
     ee.Initialize(project=args.projeto)
     try:
