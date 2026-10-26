@@ -11,15 +11,17 @@ Bucket    BUCKET (o mesmo do acervo); cobrança no PROJETO_STORAGE — credencia
           como no dowloadQGIS/exportar_acervo_gee.py (EE ou gcloud ADC; ver
           dowloadQGIS/GUIA_GCLOUD_BUCKET_GEE.md)
 
-Pula imagens que já existem na coleção. Registro em <run>/registro_subida_gee_<data>.csv.
+Pula imagens que já existem na coleção. Registro em <run>/registro_subida_gee_p<k>_<data>.csv.
 
 Uso
+  python subir_predicao_gee.py                    # todas as rodadas/passos em RUNS_DIR
   python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
 """
 
 import argparse
 import csv
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -64,38 +66,20 @@ def manifesto(asset, uri, props):
     }
 
 
-def main(lista=None):
-    a = argparse.ArgumentParser(description='Sobe os mapas de p da CNN para uma ImageCollection')
-    a.add_argument('--run', required=True)
-    a.add_argument('--passo', type=int, default=1)
-    a.add_argument('--mapas', default='', help='pasta dos p_<LxCy>_<rodada>.tif (padrão: <run>/mapas_passo<k>)')
-    a.add_argument('--colecao', default=COLECAO)
-    a.add_argument('--bucket', default=BUCKET)
-    a.add_argument('--projeto', default=PROJETO_EE)
-    a.add_argument('--sobrescrever', action='store_true')
-    args = a.parse_args(lista)
-
-    run = Path(args.run)
-    pasta = Path(args.mapas) if args.mapas else run / f'mapas_passo{args.passo}'
+def subir_pasta(run, passo, pasta, args, bucket, bucket_nome, prefixo):
+    """Sobe os p_<LxCy>.tif de uma pasta mapas_passo<k> de uma rodada; grava o registro na rodada."""
     arquivos = sorted(pasta.glob('p_L*C*.tif'))
     if not arquivos:
-        raise SystemExit(f'Nenhum p_<LxCy>.tif em {pasta} — rode inferir_cnn.py --tiles … --passo {args.passo}')
+        print(f'Nenhum p_<LxCy>.tif em {pasta} — rode inferir_cnn.py --tiles … --passo {passo}')
+        return
     cfg = json.loads((run / 'config.json').read_text())
     rodada = run.name
+    print(f'== {rodada} passo {passo}: {len(arquivos)} mapas')
 
-    ee.Initialize(project=args.projeto)
-    try:
-        ee.data.getAsset(args.colecao)
-    except ee.EEException:
-        ee.data.createAsset({'type': 'IMAGE_COLLECTION'}, args.colecao)
-        print(f'Coleção criada: {args.colecao}')
-
-    bucket_nome, _, prefixo = args.bucket[5:].partition('/')
-    bucket = cliente_storage().bucket(bucket_nome)
     registro = []
     for arq in arquivos:
         cel = re.match(r'p_(L\d+C\d+)', arq.name).group(1)
-        nome = f'{rodada}_p{args.passo}_{cel}'.replace('.', '_')
+        nome = f'{rodada}_p{passo}_{cel}'.replace('.', '_')
         asset = f'{args.colecao}/{nome}'
         try:
             ee.data.getAsset(asset)
@@ -109,7 +93,7 @@ def main(lista=None):
         bucket.blob(blob).upload_from_filename(str(arq))
         uri = f'gs://{bucket_nome}/{blob}'
         props = {'modelo': f'CNN_{cfg.get("backbone")}', 'alvo': ALVO, 'mosaico': MOSAICO, 'celula': cel,
-                 'rodada': rodada, 'passo': args.passo, 'canais': cfg.get('modelo'),
+                 'rodada': rodada, 'passo': passo, 'canais': cfg.get('modelo'),
                  'patch': cfg.get('patch'), 'escala_p': 10000}
         try:
             resp = ee.data.startIngestion(ee.data.newTaskId()[0], manifesto(asset, uri, props),
@@ -120,12 +104,57 @@ def main(lista=None):
             print(f'  {nome}: ERRO {e}')
             registro.append({'asset': asset, 'uri': uri, 'status': f'erro: {str(e)[:100]}'})
 
-    arq_reg = run / f'registro_subida_gee_{datetime.now():%Y%m%d_%H%M}.csv'
+    arq_reg = run / f'registro_subida_gee_p{passo}_{datetime.now():%Y%m%d_%H%M}.csv'
     with open(arq_reg, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=['asset', 'uri', 'status', 'task_id'], extrasaction='ignore')
         w.writeheader()
         w.writerows(registro)
     print(f'Registro → {arq_reg}')
+
+
+def main(lista=None):
+    a = argparse.ArgumentParser(description='Sobe os mapas de p da CNN para uma ImageCollection')
+    a.add_argument('--run', default='', help='pasta da rodada (padrão: todas as rodadas em --runs)')
+    a.add_argument('--runs', default=os.environ.get('RUNS_DIR', '/srv/almacen/db_images/runs_cnn'))
+    a.add_argument('--passo', type=int, default=None, help='padrão: todos os mapas_passo<k> encontrados')
+    a.add_argument('--mapas', default='', help='pasta dos p_<LxCy>_<rodada>.tif (exige --run e --passo)')
+    a.add_argument('--colecao', default=COLECAO)
+    a.add_argument('--bucket', default=BUCKET)
+    a.add_argument('--projeto', default=PROJETO_EE)
+    a.add_argument('--sobrescrever', action='store_true')
+    args = a.parse_args(lista)
+
+    # (run, passo, pasta) a subir
+    if args.mapas:
+        if not (args.run and args.passo):
+            raise SystemExit('--mapas exige --run e --passo')
+        alvos = [(Path(args.run), args.passo, Path(args.mapas))]
+    else:
+        runs = [Path(args.run)] if args.run else sorted(p for p in Path(args.runs).expanduser().iterdir() if p.is_dir())
+        alvos = []
+        for run in runs:
+            for pasta in sorted(run.glob('mapas_passo*')):
+                passo = int(pasta.name.removeprefix('mapas_passo'))
+                if args.passo is None or passo == args.passo:
+                    if not (run / 'config.json').exists():
+                        print(f'{run.name}: sem config.json — pulado')
+                        continue
+                    alvos.append((run, passo, pasta))
+    if not alvos:
+        raise SystemExit('Nenhuma pasta mapas_passo<k> encontrada — rode inferir_cnn.py --tiles antes')
+    print('A subir:', ', '.join(f'{r.name}/p{k}' for r, k, _ in alvos))
+
+    ee.Initialize(project=args.projeto)
+    try:
+        ee.data.getAsset(args.colecao)
+    except ee.EEException:
+        ee.data.createAsset({'type': 'IMAGE_COLLECTION'}, args.colecao)
+        print(f'Coleção criada: {args.colecao}')
+
+    bucket_nome, _, prefixo = args.bucket[5:].partition('/')
+    bucket = cliente_storage().bucket(bucket_nome)
+    for run, passo, pasta in alvos:
+        subir_pasta(run, passo, pasta, args, bucket, bucket_nome, prefixo)
 
 
 if __name__ == '__main__':
