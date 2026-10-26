@@ -76,12 +76,38 @@ BLOCO = 512          # px de saída por bloco (sem a borda)
 # ═══════════════════════════════════════════════════════════════════════════
 # MODELOS
 # ═══════════════════════════════════════════════════════════════════════════
-def carregar_modelos(run, dispositivo):
-    """Lista de (modelo, normalização) — final.pt ou todos os fold<k>.pt."""
+def escolher_folds(run, folds):
+    """Modelos pedidos em --folds:
+      '0,2'   esses fold<k>.pt
+      'auto'  final.pt se existir (rodada _teste: treinado em todos os folds); senão o 1º
+              fold sem ocorrência na validação (metricas_folds.csv sem n_pontos) — esse
+              treinou com TODAS as ocorrências. A divisão é a mesma em todas as rodadas,
+              então é o mesmo fold em todas (comparação justa). Não se escolhe pelo
+              ap_ponto: cada fold é medido em células diferentes, só 2 têm ocorrência e o
+              vencedor é justamente um que treinou sem metade delas."""
+    if folds != 'auto':
+        return [run / f'fold{int(k)}.pt' for k in folds.split(',') if k.strip()]
+    if (run / 'final.pt').exists():
+        return [run / 'final.pt']
+    import pandas as pd
+    tab = pd.read_csv(run / 'metricas_folds.csv')
+    sem = tab[tab['n_pontos'].fillna(0) == 0] if 'n_pontos' in tab else tab
+    if not len(sem):
+        raise SystemExit(f'{run}: todos os folds têm ocorrência na validação — passe --folds <k>')
+    k = int(sem.fold.min())
+    print(f'  fold {k}: sem ocorrência na validação (treinou com todas as ocorrências)')
+    return [run / f'fold{k}.pt']
+
+
+def carregar_modelos(run, dispositivo, folds=''):
+    """Lista de (modelo, normalização) — final.pt ou todos os fold<k>.pt; com `folds`, só esses."""
     run = Path(run)
-    arquivos = [run / 'final.pt'] if (run / 'final.pt').exists() else sorted(run.glob('fold*.pt'))
-    if not arquivos:
-        raise SystemExit(f'Nenhum final.pt ou fold*.pt em {run}')
+    if folds:
+        arquivos = escolher_folds(run, folds)
+    else:
+        arquivos = [run / 'final.pt'] if (run / 'final.pt').exists() else sorted(run.glob('fold*.pt'))
+    if not arquivos or not all(a.exists() for a in arquivos):
+        raise SystemExit(f'Modelos não encontrados em {run}: {[a.name for a in arquivos] or "final.pt / fold*.pt"}')
     saida = []
     for a in arquivos:
         ck = torch.load(a, map_location='cpu', weights_only=False)
@@ -93,7 +119,7 @@ def carregar_modelos(run, dispositivo):
         saida.append({'modelo': modelo, 'est': torch.from_numpy(est).to(dispositivo),
                       'bin': torch.tensor([c == tc.CANAL_BIN for c in ck['canais']], device=dispositivo)})
         print(f'  {a.name}: {args["backbone"]}, {len(ck["canais"])} canais, patch {args["patch"]} px')
-    return saida, ck['canais'], args['patch'], args['modelo']
+    return saida, ck['canais'], args['patch'], args['modelo'], [a.name for a in arquivos]
 
 
 def normalizar(x, m):
@@ -331,18 +357,28 @@ def main(lista=None):
     a.add_argument('--tiles', default='', help="pasta canais_<modelo> de baixar_tiles.py "
                    "('padrao' = $TILES_DIR/canais_<modelo>); vazio = baixa do GEE na hora")
     a.add_argument('--sub', type=int, default=1, help='subdivide cada pedaço em sub × sub (memória)')
+    a.add_argument('--folds', default='', help="'auto' = final.pt ou o 1º fold sem ocorrência na "
+                   "validação (1 modelo); '0,2' = esses; vazio = final.pt ou a média dos 5 (5× mais lento)")
     args = a.parse_args(lista)
     if args.passo % 2 == 0:
         print('Aviso: passo par desloca meio pixel o centro do pixel de saída; prefira 1, 3 ou 5.')
 
     dispositivo = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    modelos, canais, patch, modelo_dados = carregar_modelos(args.run, dispositivo)
+    modelos, canais, patch, modelo_dados, usados = carregar_modelos(args.run, dispositivo, args.folds)
     pasta = Path(args.saida) if args.saida else Path(args.run) / f'mapas_passo{args.passo}'
     pasta.mkdir(parents=True, exist_ok=True)
     if args.tiles:                              # pedaços locais: sem GEE
-        (pasta / 'config_inferencia.json').write_text(json.dumps(
+        cfg_inf = pasta / 'config_inferencia.json'
+        if cfg_inf.exists() and any(pasta.glob('pedacos/*/p_*.tif')):    # não misturar modelos no mesmo mapa
+            antes = json.loads(cfg_inf.read_text())
+            if antes.get('modelos_usados', antes.get('n_modelos')) != (usados if 'modelos_usados' in antes
+                                                                         else len(usados)):
+                raise SystemExit(f'{pasta} já tem pedaços previstos com outros modelos '
+                                 f'({antes.get("modelos_usados", str(antes.get("n_modelos")) + " modelos")}); '
+                                 f'agora: {usados}. Apague {pasta} ou use --saida outra pasta.')
+        cfg_inf.write_text(json.dumps(
             {**vars(args), 'modelo': modelo_dados, 'canais': canais, 'patch': patch,
-             'n_modelos': len(modelos)}, indent=2))
+             'n_modelos': len(modelos), 'modelos_usados': usados}, indent=2))
         return rodar_tiles(args, modelos, canais, patch, modelo_dados, pasta, dispositivo)
     if ee is None:
         raise SystemExit('Sem earthengine-api neste ambiente: use --tiles padrao (pedaços do baixar_tiles.py) '

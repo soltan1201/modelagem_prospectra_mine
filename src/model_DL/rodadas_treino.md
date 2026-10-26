@@ -49,6 +49,36 @@ escolha final usa os 5.
 cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
 ```
 
+### Patches pelo Google Drive (sem servidor)
+
+Alternativa ao `exportar_patches.py` no servidor: a base de treino/validação/teste
+sai do GEE direto para o Drive, com o mesmo sorteio e a mesma divisão por célula
+(importados do `exportar_patches.py`). Fluxo completo em
+[`guia_gdrive.md`](guia_gdrive.md) (seção 0).
+
+```bash
+# máquina local: tasks do GEE (Export.table.toDrive) → Drive patches_cnn_gee/ (TFRecord)
+python exportar_patches_drive.py --so-sortear                          # só mostra as quantidades
+python exportar_patches_drive.py --projeto ee-solkancengine17
+python exportar_patches_drive.py --projeto ee-solkancengine17 --celulas L2C3,L3C3   # teste
+```
+
+Retomável: tasks com a mesma descrição já pendentes, rodando ou concluídas são
+puladas. Depois, no Colab (célula 6b do `cnn_colab.ipynb`), converter para o
+formato do treino (`modelo_A/` e `modelo_B1/` `patches_<LxCy>.npz`,
+`indice_patches.csv`, `divisao.json`, ~1,3 GB):
+
+```bash
+!python tfrecord_para_npz.py --origem /content/drive/MyDrive/patches_cnn_gee \
+    --destino /content/drive/MyDrive/prospectra/patches_cnn
+```
+
+Confere o número de patches de cada célula contra o `indice_patches.csv`.
+Para treinar no servidor, trazer com
+`rclone copy gdrive:prospectra/patches_cnn /srv/almacen/db_images/patches_cnn --progress`.
+Com o mesmo `SEED` e os mesmos assets, o sorteio sai igual; se algum asset
+mudou, as rodadas antigas deixam de ser comparáveis.
+
 ## Convenção de nomes
 
 `<modelo>_<backbone curto>_<patch>` — e `_teste` para a rodada final.
@@ -73,6 +103,8 @@ cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
 | `final.pt` | só nas rodadas `_teste`: modelo treinado em todos os folds |
 | `teste.csv`, `metricas_teste.json` | só nas rodadas `_teste`: predições e métricas no conjunto de teste |
 | `mapas_passo<k>/p_<LxCy>.tif` | criados depois pelo `inferir_cnn.py` |
+| `mapas_passo<k>_preenchido/` | bordas preenchidas pelo `preencher_bordas.py --preencher` (+ `relatorio_bordas.csv`) |
+| `registro_subida_gee_p<k>[_preenchido]_<data>.csv` | assets e tasks do `subir_predicao_gee.py` |
 
 ## 1. Linha de base — CNN pequena, 32 px
 
@@ -181,8 +213,16 @@ python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste -
 python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1
 #    → <rodada>/mapas_passo1/pedacos/<LxCy>/p_<LxCy>_r<i>c<j>.tif e <rodada>/mapas_passo1/p_<LxCy>.tif
 
-# 3) subir ao GEE (bucket + ingestão) → projects/mapbiomas-arida/mine/cnn_favorabilidade
-python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
+# 3) bordas: diagnóstico e preenchimento com as células vizinhas → mapas_passo<k>_preenchido/
+python preencher_bordas.py --preencher --interpolar 10
+
+# 4) conferir no navegador (opcional)
+streamlit run app_visualizar.py --server.port 8501 --server.headless true
+
+# 5) subir ao GEE → projects/mapbiomas-arida/mine/cnn_favorabilidade
+python juntar_mapas_gee.py            # 1 GeoTIFF por rodada e passo em runs_cnn/upload_gee/
+#    upload à mão no Code Editor, depois:
+python propriedades_mapas_gee.py
 ```
 
 Mapas em UInt16 (p × 10000, 0 = sem dado), como o `favorabilidade_ml`. A
@@ -273,6 +313,56 @@ python baixar_tiles.py --modelo A --celulas L2C3
 Se mudar `--n` ou `--borda`, apague a pasta `canais_<modelo>` inteira antes:
 os nomes dos pedaços (`r<i>c<j>`) mudam de significado e misturar dá mapa errado.
 
+### Canais pelo Google Drive (caminho usado)
+
+**Caminho usado: Opção 1.** Os canais foram exportados por tasks do GEE para
+o Drive e cortados no Colab; o `baixar_tiles.py` no servidor (acima) e a Opção 2
+ficam como alternativas. Fluxo completo e cotas em
+[`guia_gdrive.md`](guia_gdrive.md) (seção 0).
+
+**Opção 1 (usada): tasks do GEE (`Export.image.toDrive`), sem servidor e sem rclone.**
+Roda em qualquer máquina; uma task por célula (~1 GB cada, o GEE pode dividir
+em mais de um arquivo), na pasta `tiles_cnn_gee/` do Drive da conta EE:
+
+```bash
+python exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17
+python exportar_tiles_drive.py --modelo B1 --projeto ee-solkancengine17
+python exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17 --celulas L2C3   # teste
+```
+
+Retomável: tasks com a mesma descrição (pendentes, rodando ou concluídas) são
+puladas. Acompanhar no Task Manager do GEE ou com `tools/revisarTasksXconta.py`.
+
+Depois, cortar cada célula nos 6 × 6 pedaços com borda que o `inferir_cnn.py
+--tiles` lê (no Colab, célula 5 do `cnn_predict_colab.ipynb` ou 10c do
+`cnn_colab.ipynb`):
+
+```bash
+!python cortar_tiles_drive.py --modelo A --origem /content/drive/MyDrive/tiles_cnn_gee \
+    --destino /content/drive/MyDrive/prospectra/tiles_cnn
+```
+
+Use o mesmo `--borda` (e `--n`) nos dois scripts. Depois de cortar, os `.tif`
+de `tiles_cnn_gee/` podem ser apagados (~18 GB por modelo).
+
+**Opção 2: `baixar_tiles.py` direto para o Drive (rclone).** Cada pedaço sobe
+para `gdrive:prospectra/tiles_cnn/canais_<modelo>` e é apagado do disco:
+
+```bash
+python baixar_tiles.py --modelo A --destino drive        # outro remote: --remoto ou TILES_REMOTO
+```
+
+**Trazer do Drive para o servidor** (para rodar `inferir_cnn.py` no servidor):
+
+```bash
+rclone copy gdrive:prospectra/tiles_cnn/canais_A /srv/almacen/db_images/tiles_cnn/canais_A --progress
+ls /srv/almacen/db_images/tiles_cnn/canais_A/*/*.tif | wc -l     # 900
+```
+
+São ~18 GB por modelo: passa da cota gratuita do Drive (15 GB). Para os pedaços
+ficarem na cota de outra conta (pasta compartilhada → pasta própria), use o
+`copiar_tifs_colab.ipynb`.
+
 ### Predição por rodada (`inferir_cnn.py --tiles padrao`)
 
 Cada rodada lê os pedaços do **seu** modelo de canais sozinha (`--tiles padrao`
@@ -282,22 +372,30 @@ completos (900) antes.
 
 Sem `final.pt` (rodadas de CV), a predição é a média dos 5 `fold<k>.pt`
 (ensemble); nas rodadas `_teste`, usa o `final.pt`.
+`--folds auto` usa 1 modelo só (5× mais rápido): o `final.pt` se existir, senão o
+1º fold sem ocorrência na validação (`metricas_folds.csv` sem `n_pontos`), que
+treinou com todas as ocorrências — o mesmo fold em todas as rodadas, porque a
+divisão é a mesma. Não escolher o fold pelo `ap_ponto`: cada fold é medido em
+células diferentes, só 2 têm ocorrência e o vencedor treinou sem metade delas.
+`--folds 2` força um fold. Não misture modelos na mesma
+`mapas_passo<k>/`: se já houver pedaços feitos com outros, o script para —
+apague a pasta ou use `--saida`.
 
 Ordem sugerida: `--passo 3` numa célula (teste rápido, confere o mapa) →
 `--passo 3` na área toda (comparar as rodadas) → `--passo 1` só na escolhida.
 
 | Rodada | Pedaços | Teste (1 célula, passo 3) | Área toda (passo 3) |
 |---|---|---|---|
-| `A_pequena_32` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3` |
-| `B1_pequena_32` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3` |
-| `A_regnety_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3` |
-| `B1_regnety_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3` |
-| `A_effv2s_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3` |
-| `B1_effv2s_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3` |
-| `A_resnet50_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3` |
-| `B1_resnet50_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3` |
-| `A_coatnet0_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3` |
-| `B1_coatnet0_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3 --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3` |
+| `A_pequena_32` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3 --folds auto` |
+| `B1_pequena_32` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3 --folds auto` |
+| `A_regnety_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3 --folds auto` |
+| `B1_regnety_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3 --folds auto` |
+| `A_effv2s_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3 --folds auto` |
+| `B1_effv2s_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3 --folds auto` |
+| `A_resnet50_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3 --folds auto` |
+| `B1_resnet50_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3 --folds auto` |
+| `A_coatnet0_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3 --folds auto` |
+| `B1_coatnet0_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3 --folds auto` |
 
 Saída: `runs_cnn/<rodada>/mapas_passo3/p_<LxCy>.tif` (e `pedacos/` por célula).
 Se faltar memória: `--sub 2` (divide cada pedaço em 2 × 2); na GPU, `--lote 128`.
@@ -312,19 +410,125 @@ for nome in A_pequena_32 B1_pequena_32 A_regnety_64 B1_regnety_64 A_effv2s_64 B1
             A_resnet50_64 B1_resnet50_64 A_coatnet0_64 B1_coatnet0_64; do
   run=/srv/almacen/db_images/runs_cnn/$nome
   ls $run/*.pt >/dev/null 2>&1 || { echo "pulando $nome (sem .pt)"; continue; }
-  python inferir_cnn.py --run $run --tiles padrao --passo 3 2>&1 | tee $run/log_inferir_passo3.txt
+  python inferir_cnn.py --run $run --tiles padrao --passo 3 --folds auto 2>&1 | tee $run/log_inferir_passo3.txt
 done
 # Ctrl+b, d para sair sem parar
 ```
 
-Mapa final (passo 1) e subida ao GEE — só a rodada escolhida, de preferência a `_teste`:
+Mapa final (passo 1) — só a rodada escolhida, de preferência a `_teste`:
 
 ```bash
 python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1 \
     2>&1 | tee /srv/almacen/db_images/runs_cnn/A_regnety_64_teste/log_inferir_passo1.txt
+```
+
+Conferir quantas células saíram: `ls /srv/almacen/db_images/runs_cnn/<rodada>/mapas_passo3/p_*.tif | wc -l` (25).
+
+### Bordas das células (`preencher_bordas.py`)
+
+Faixas sem p na beira das células: o diagnóstico diz se é buraco do mosaico
+(os canais também não têm dado) ou falha da predição (os canais têm dado e o p
+não — aí o certo é apagar os pedaços afetados e rodar `inferir_cnn.py` de
+novo). O preenchimento grava `mapas_passo<k>_preenchido/` sem tocar nos
+originais.
+
+```bash
+python preencher_bordas.py                                   # diagnóstico, todas as rodadas com .pt
+python preencher_bordas.py --preencher --interpolar 10       # preenche todas (vizinhas + até 10 px interpolados)
+python preencher_bordas.py --mapas /srv/almacen/db_images/runs_cnn/B1_coatnet0_64/mapas_passo3 \
+    --tiles /srv/almacen/db_images/tiles_cnn/canais_B1      # uma pasta
+```
+
+Resumo em `runs_cnn/relatorio_bordas_rodadas.csv`. A interpolação é só
+estética (p inventado, não previsto); `--interpolar 0` deixa só as vizinhas.
+
+### Visualizar no servidor (`app_visualizar.py`)
+
+Mapa de p de uma rodada ao lado de um RGB, um canal, outra rodada ou a
+diferença entre rodadas, com zoom sincronizado e as ocorrências por cima. Lê os
+arquivos locais (sem GEE). Instalar uma vez: `pip install streamlit plotly` no
+`py_DL`.
+
+```bash
+tmux new -s app
+conda activate py_DL
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+streamlit run app_visualizar.py --server.port 8501 --server.headless true
+```
+
+No seu computador: `ssh -p 2222 -N -L 8501:localhost:8501 superusuario@192.168.25.250`
+e abrir http://localhost:8501.
+
+### Subir ao GEE
+
+Destino: `projects/mapbiomas-arida/mine/cnn_favorabilidade`, banda p × 10000
+(0 = sem dado), como o `favorabilidade_ml`. Nos dois caminhos, quando existe
+`mapas_passo<k>_preenchido/` sobe só ela (`--com-originais` sobe as duas);
+cada imagem leva `rodada`, `passo`, `preenchido` (0/1), `modelo`, `canais`,
+`patch`.
+
+**Caminho 1 — à mão pelo Code Editor (sem bucket; o usado agora, porque o
+Storage da solkanCengine17 passou da cota).** Uma imagem por rodada e passo
+(as 25 células juntas):
+
+```bash
+python juntar_mapas_gee.py                 # todas as rodadas → runs_cnn/upload_gee/<rodada>_p<k>[_preenchido].tif
+python juntar_mapas_gee.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --passo 3
+```
+
+Gera também `upload_gee/propriedades_upload.csv` (asset e propriedades de cada
+arquivo). Tamanho esperado: ~30–60 MB por arquivo no passo 3, ~250–500 MB no
+passo 1. Baixe os `.tif` para o seu computador e, no Code Editor, Assets → NEW
+→ GeoTIFF:
+
+- Asset ID: `projects/mapbiomas-arida/mine/cnn_favorabilidade/<nome do arquivo>`
+  (coluna `asset` do CSV)
+- nodata 0, pyramiding MEAN
+
+Depois dos uploads, grave as propriedades a partir do CSV (pula os que ainda
+não subiram; pode rodar de novo a cada leva):
+
+```bash
+python propriedades_mapas_gee.py --conferir     # só mostra
+python propriedades_mapas_gee.py
+```
+
+A conta EE ativa do servidor precisa escrever em `mapbiomas-arida/mine`; o
+projeto EE é o dela (`configure_account_projects_ee.py`; solkanCengine →
+`ee-solkancengine17`) ou `--projeto`. O upload chama a banda de `b1`:
+
+```javascript
+var p = ee.ImageCollection('projects/mapbiomas-arida/mine/cnn_favorabilidade')
+  .filter(ee.Filter.eq('rodada', 'B1_regnety_64'))
+  .filter(ee.Filter.eq('passo', 3))
+  .filter(ee.Filter.eq('preenchido', 1))
+  .first()
+  .select(['b1'], ['probability'])
+  .divide(10000);
+```
+
+**Caminho 2 — bucket + ingestão (`subir_predicao_gee.py`).** Uma imagem por
+célula (25 por rodada e passo, `celula` = `LxCy`; no GEE, `.mosaic()`).
+Sem argumentos sobe todas as rodadas e passos de `RUNS_DIR`; pula as imagens que
+já existem (`--sobrescrever` reenvia).
+
+```bash
+python subir_predicao_gee.py                                    # tudo
+python subir_predicao_gee.py --passo 3                          # passo 3 de todas
 python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
 ```
 
-Para comparar no GEE as rodadas de CV também, suba cada uma com `--passo 3`
-(`python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/<rodada> --passo 3`).
-Conferir quantas células saíram: `ls /srv/almacen/db_images/runs_cnn/<rodada>/mapas_passo3/p_*.tif | wc -l` (25).
+Arquivos em `gs://cengine17-acervo-cprm/cnn_favorabilidade/<rodada>/<pasta>/`,
+enviados pelo gcloud ADC do servidor (service account
+`mapbiomas-energia@mapbiomas-agua`), que precisa de `roles/storage.objectAdmin`
+no bucket:
+
+```bash
+# na máquina local, conta cengine17
+gcloud storage buckets add-iam-policy-binding gs://cengine17-acervo-cprm \
+    --member=serviceAccount:mapbiomas-energia@mapbiomas-agua.iam.gserviceaccount.com \
+    --role=roles/storage.objectAdmin
+```
+
+A ingestão lê o `gs://` com a conta EE ativa: se não for a dona do bucket, dê
+a ela `roles/storage.objectViewer`. As tasks aparecem no Task Manager do GEE.
