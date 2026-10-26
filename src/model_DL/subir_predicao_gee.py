@@ -7,9 +7,11 @@ p × 10000, 0 = sem dado) para comparar com RF/GTB no visualizar_favorabilidade_
 Entrada   <run>/mapas_passo<k>/p_<LxCy>_<rodada>.tif   (UInt16, EPSG:4326)
 Destino   COLECAO/<rodada>_p<k>_<LxCy>  com propriedades modelo (CNN_<backbone>),
           alvo, mosaico, celula, rodada, passo, canais (A/B1), escala_p
-Bucket    BUCKET (o mesmo do acervo); cobrança no PROJETO_STORAGE — credenciais
-          como no dowloadQGIS/exportar_acervo_gee.py (EE ou gcloud ADC; ver
-          dowloadQGIS/GUIA_GCLOUD_BUCKET_GEE.md)
+Contas    EE: a conta ativa do servidor (current_user.txt), no projeto dela em
+          configure_account_projects_ee (solkanCengine → ee-solkancengine17); precisa
+          ler o bucket para a ingestão.
+          Storage: gcloud ADC — a service account mapbiomas-energia@mapbiomas-agua,
+          com roles/storage.objectAdmin no bucket (dado pela cengine17).
 
 Pula imagens que já existem na coleção. Registro em <run>/registro_subida_gee_p<k>_<data>.csv.
 
@@ -23,36 +25,28 @@ import csv
 import json
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import ee
 
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from configure_account_projects_ee import get_current_account   # noqa: E402
+
 COLECAO         = 'projects/mapbiomas-arida/mine/cnn_favorabilidade'
 BUCKET          = 'gs://cengine17-acervo-cprm/cnn_favorabilidade'
-PROJETO_STORAGE = 'project-fadb9cba-032b-4fb9-882'   # mesmo projeto de cobrança do acervo
-PROJETO_EE      = 'mapbiomas-brazil'
 ALVO, MOSAICO   = 'fosfato', 'aster-mosaico-final'
 
 
 def cliente_storage():
-    """Storage com as credenciais do EE; se não der, as do gcloud (ADC). Cobrança sempre no
-    PROJETO_STORAGE (sem isso: 'billing account … absent') — igual ao exportar_acervo_gee.py."""
+    """Storage com o gcloud ADC do servidor (service account mapbiomas-energia@mapbiomas-agua,
+    via GOOGLE_APPLICATION_CREDENTIALS), que tem objectAdmin no bucket da cengine17."""
     import google.auth
     from google.cloud import storage
-
-    def no_projeto(cred):
-        return cred.with_quota_project(PROJETO_STORAGE) if hasattr(cred, 'with_quota_project') else cred
-
-    try:
-        cliente = storage.Client(project=PROJETO_STORAGE,
-                                 credentials=no_projeto(ee.data.get_persistent_credentials()))
-        list(cliente.list_buckets(max_results=1))
-        return cliente
-    except Exception as e:    # noqa: BLE001 — credenciais do EE sem escopo de Storage
-        print(f'  credenciais do EE sem acesso ao Storage ({str(e)[:80]}); tentando gcloud ADC')
-        cred, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/devstorage.read_write'])
-        return storage.Client(project=PROJETO_STORAGE, credentials=no_projeto(cred))
+    cred, projeto = google.auth.default(scopes=['https://www.googleapis.com/auth/devstorage.read_write'])
+    print(f'Storage: {getattr(cred, "service_account_email", "ADC")} ({projeto})')
+    return storage.Client(project=projeto, credentials=cred)
 
 
 def manifesto(asset, uri, props):
@@ -123,7 +117,7 @@ def main(lista=None):
     a.add_argument('--mapas', default='', help='pasta dos p_<LxCy>_<rodada>.tif (exige --run e --passo)')
     a.add_argument('--colecao', default=COLECAO)
     a.add_argument('--bucket', default=BUCKET)
-    a.add_argument('--projeto', default=PROJETO_EE)
+    a.add_argument('--projeto', default='', help='projeto EE (padrão: o da conta ativa)')
     a.add_argument('--sobrescrever', action='store_true')
     a.add_argument('--com-originais', action='store_true',
                    help='sobe também mapas_passo<k> quando existe mapas_passo<k>_preenchido')
@@ -154,7 +148,9 @@ def main(lista=None):
         raise SystemExit('Nenhuma pasta mapas_passo<k> encontrada — rode inferir_cnn.py --tiles antes')
     print('A subir:', ', '.join(f'{r.name}/{d.name}' for r, _, d in alvos))
 
-    ee.Initialize(project=args.projeto)
+    projeto = args.projeto or get_current_account()
+    ee.Initialize(project=projeto)
+    print(f'EE: projeto {projeto}')
     try:
         ee.data.getAsset(args.colecao)
     except ee.EEException:
