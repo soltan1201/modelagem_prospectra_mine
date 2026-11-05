@@ -38,8 +38,22 @@ def current_user(state='CURRENT'):
     os.system("cat {}/current_user.txt".format(EE_CONFIG_PATH)) 
 
 
+def active_user():
+    """Conta gravada em current_user.txt ('' se o arquivo não existir)."""
+    try:
+        with open('{}/current_user.txt'.format(EE_CONFIG_PATH)) as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return ''
+
+
 def switch_user(user_name):
-    current_user('PREVIOUS') 
+    # já é a conta ativa: não mexe nas credenciais (evita sobrescrever o credentials-last)
+    if active_user() == user_name:
+        os.system("echo 'gee.CURRENT_USER (sem troca):'")
+        os.system("echo '{}'".format(user_name))
+        return
+    current_user('PREVIOUS')
     os.system(
         "rm {}/credentials-last".format(EE_CONFIG_PATH))
     os.system(

@@ -1,6 +1,6 @@
 ---
 name: train-swir-models
-description: Use when the user wants to train or debug the local regression models (PLS/XGBoost/RF; legacy GPR) that estimate ASTER SWIR bands (B04-B09) from VNIR+TIR, the train_swir_models notebook (temporal test, per-scene normalization, saved figures), metrics.json/best_params.json, or missing xgboost. Triggers on "train_swir_models", "treinar modelos SWIR", "PLS XGBoost RF", "estimar bandas SWIR local", "teste temporal".
+description: Use when the user wants to train or debug the local regression models (PLS/XGBoost/RF; legacy GPR) that estimate ASTER SWIR bands (B04-B09) from VNIR+TIR, the train_swir_models notebook (temporal test, per-scene normalization, saved figures), metrics.json/best_params.json, or missing xgboost. Triggers on "train_swir_models", "train_swir_models_sazonal", "treinar modelos SWIR", "PLS XGBoost RF", "estimar bandas SWIR local", "teste temporal".
 ---
 
 # Train SWIR Models (local)
@@ -72,6 +72,17 @@ Figuras com `salvar(fig, celula, nome)` (célula 2) a 450 dpi em
 `celula=`/`nome=` ao `plot_scatter`. As células 11/11A param com mensagem se
 o kernel foi reiniciado e a célula 10 (PLS) não rodou. Várias figuras foram
 para o relatório do mosaico (`docs/figuras_contagem/`).
+
+## Notebook sazonal (`train_swir_models_sazonal.ipynb`)
+
+Gerado a partir do `train_swir_models.ipynb` (o original não muda) para o mosaico
+sazonal seco. Entradas: `src/Dados/ASTER_Samples_sazonal_seco/points_sazonal_seco_A.csv`
+e `points_sazonal_seco_pareados.csv` (sufixos `_A`/`_B`); filtro `N_OBS_MIN`; legendas
+com `n_obs` (não há data de cena). Saída `models/sazonal_seco/`. Seções: 2–7 modelos no
+A + `best_params.json`; 8 teste temporal; 9 modelo pareado B → SWIR do A (80/20 e
+GroupKFold por célula, `best_params_pareado.json`); 10 normalização B → A
+(`ols`/`rma`/`qm` × `global`/`celula`). A decisão entre `sazonal_seco` e
+`sazonal_pareado` sai daí (ver skill `mosaico-sazonal-seco`).
 
 ## O que este skill NÃO faz
 

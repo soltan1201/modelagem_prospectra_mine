@@ -11,8 +11,8 @@ janela deslizante → coleção no GEE → relatório.
   `pontos_referencia`, `grid_irece_5x5`.
 - Conta EE que lê/escreve `projects/mapbiomas-arida/mine` (inicializa com
   `mapbiomas-brazil`); bucket `gs://cengine17-acervo-cprm` para a subida.
-- Árvore `src/` completa no servidor/Drive (`model_DL/` importa
-  `../modeling/maxent_fosfato.py`).
+- Árvore `src/` completa no servidor/Drive (`model_DL/regiao_completa/` importa
+  `src/gee_tools.py` e `src/modeling/regiao_completa/`).
 - Python: `earthengine-api`, `numpy`, `pandas`, `torch` (CUDA), `timm`,
   `scikit-learn`, `rasterio`, `google-cloud-storage`.
 

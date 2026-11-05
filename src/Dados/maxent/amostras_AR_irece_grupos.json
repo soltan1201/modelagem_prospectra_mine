@@ -1,0 +1,82 @@
+{
+ "asset": "projects/mapbiomas-arida/mine/amostras_AR_irece",
+ "area": [
+  -42.31762892604435,
+  -12.359936623152336,
+  -41.2382221877631,
+  -10.5375816299746
+ ],
+ "mosaico": "aster-mosaico-final",
+ "buffer_m": 250,
+ "dist_fundo_m": 2000,
+ "sem_dado": -9999,
+ "grupos": {
+  "aster": [
+   "B01",
+   "B02",
+   "B3N",
+   "B04",
+   "B05",
+   "B06",
+   "B07",
+   "B08",
+   "B09",
+   "B10",
+   "B11",
+   "B12",
+   "B13",
+   "B14",
+   "NDVI",
+   "SAVI",
+   "ferric_iron_2_1",
+   "ferric_ox_4_3",
+   "gossan_4_2",
+   "ferrous_sil_5_4",
+   "sericite_illite_smectite",
+   "alunite_kaolinite_pyrophyllite",
+   "muscovite_7_6",
+   "kaolinite_7_5",
+   "dolomite",
+   "carbonate_8_6",
+   "carbonate_13_14",
+   "quartz_14_12",
+   "sultan_r",
+   "sultan_g",
+   "sultan_b",
+   "phosphorite_rbd",
+   "glcm_contrast",
+   "glcm_var",
+   "glcm_ent",
+   "glcm_hom"
+  ],
+  "gama": [
+   "eU_ppm",
+   "eTh_ppm",
+   "K_pct",
+   "CT",
+   "U_Th",
+   "U_K",
+   "Th_K",
+   "eU_res"
+  ],
+  "mag": [
+   "MAG_nT",
+   "mag_thg",
+   "mag_res"
+  ],
+  "geologia": [
+   "lito_nova_america",
+   "lito_jussara",
+   "lito_gabriel",
+   "lito_irece",
+   "lito_bebedouro",
+   "lito_morro_chapeu",
+   "lito_caboclo",
+   "lito_tombador",
+   "lito_cobertura",
+   "dist_falha_km",
+   "dist_dobra_km",
+   "dist_lineamento_km"
+  ]
+ }
+}

@@ -24,12 +24,18 @@ caatinga01–05, solkan1201, solkanGeodatin, solkanCengine
   client_id=d.get('client_id') or ee.oauth.CLIENT_ID, client_secret=...,
   token_uri=...)` a partir do arquivo da conta.
 
+- caatinga04 no projeto mapbiomas-brazil (cota/billing de lá) lê e escreve
+  `mine/`: usada em `harmonizar_sazonal_modis.py` e na cópia de `ASTER_sazonal`.
+- Exports de tabela: `toAsset` recusa feição com geometria nula ("Unable to export
+  features with null geometry"); `toDrive` CSV aceita. Tabela com muitas cenas numa
+  task só estoura memória: dividir (por mês).
+
 ## Ferramentas (`src/tools/`)
 
 | Script | Uso |
 |---|---|
 | `revisarTasksXconta.py` | tasks por conta |
-| `transferir_assets_brazil_para_arida.py` | conferir / copiar (`copyAsset`, caatinga04) / apagar originais (superconta, digita APAGAR) |
+| `transferir_assets_brazil_para_arida.py` | conferir / copiar (`copyAsset`, caatinga04) / apagar originais (superconta, digita APAGAR); `COLECOES` ativa hoje: só `ASTER_sazonal` (as outras transferidas em 2026-10-12) |
 | `listar_pastas_tabelas_gee.py` | cota + pastas com muitas tabelas, CSV; não apaga |
 | `deletfilesFOLDERs.py` | apaga filhos de uma pasta (try/except por asset) |
 

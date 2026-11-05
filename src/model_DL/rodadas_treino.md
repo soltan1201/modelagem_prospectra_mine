@@ -41,12 +41,13 @@ escolha final usa os 5.
 - Rodadas: `/srv/almacen/db_images/runs_cnn/<nome>/` (`RUNS_DIR`)
 - Modelo **A** = 15 índices espectrais + `swir_estimado` (16 canais)
 - Modelo **B1** = log da reflectância B01–B09 + emissividade B10–B14 + `swir_estimado` (15 canais)
-- Rodar de dentro de `src/model_DL/`, de preferência num `tmux`.
+- Rodar de dentro de `src/model_DL/regiao_completa/`, de preferência num `tmux`.
+  Scripts em `building_db/`, `training/` e `predict/` (o comando leva a pasta: `python training/treinar_cnn.py`).
 - Dois servidores (.250 com 8 GB e .251 com 12 GB): cópia dos dados e divisão
   das rodadas em [`guia_dois_servidores.md`](guia_dois_servidores.md).
 
 ```bash
-cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
 ```
 
 ### Patches pelo Google Drive (sem servidor)
@@ -58,9 +59,9 @@ sai do GEE direto para o Drive, com o mesmo sorteio e a mesma divisão por célu
 
 ```bash
 # máquina local: tasks do GEE (Export.table.toDrive) → Drive patches_cnn_gee/ (TFRecord)
-python exportar_patches_drive.py --so-sortear                          # só mostra as quantidades
-python exportar_patches_drive.py --projeto ee-solkancengine17
-python exportar_patches_drive.py --projeto ee-solkancengine17 --celulas L2C3,L3C3   # teste
+python building_db/exportar_patches_drive.py --so-sortear                          # só mostra as quantidades
+python building_db/exportar_patches_drive.py --projeto ee-solkancengine17
+python building_db/exportar_patches_drive.py --projeto ee-solkancengine17 --celulas L2C3,L3C3   # teste
 ```
 
 Retomável: tasks com a mesma descrição já pendentes, rodando ou concluídas são
@@ -81,7 +82,16 @@ mudou, as rodadas antigas deixam de ser comparáveis.
 
 ## Convenção de nomes
 
-`<modelo>_<backbone curto>_<patch>` — e `_teste` para a rodada final.
+`<modelo>_<backbone curto>_<patch>` — e `_teste` para a rodada final;
+`_1fold` para a rodada irmã de predição com um fold só (seção 5).
+
+**Mosaico sazonal harmonizado:** acrescente `_shm` logo depois do patch
+(`A_regnety_64_shm`, `A_regnety_64_shm_teste`, `A_regnety_64_shm_1fold`). Os
+comandos das tabelas abaixo valem iguais, só com `--nome ..._shm`. O
+`juntar_mapas_gee.py`, o `subir_predicao_gee.py` e o `propriedades_mapas_gee.py`
+gravam `mosaico = aster-mosaico-final_sazonal_hm_razao` quando o nome tem `_shm`
+(sem ele, `aster-mosaico-final`). Antes de exportar patches do sazonal, renomeie
+as pastas do v1 para `*_v1` (`src/modeling/regiao_completa/CHECKLIST_modelagem_sazonal.md`, passo 9).
 
 | Backbone (`--backbone`) | Nome curto |
 |---|---|
@@ -110,21 +120,21 @@ mudou, as rodadas antigas deixam de ser comparáveis.
 
 | Nome | Comando |
 |---|---|
-| `A_pequena_32` | `python treinar_cnn.py --modelo A --backbone pequena --patch 32 --nome A_pequena_32` |
-| `B1_pequena_32` | `python treinar_cnn.py --modelo B1 --backbone pequena --patch 32 --nome B1_pequena_32` |
+| `A_pequena_32` | `python training/treinar_cnn.py --modelo A --backbone pequena --patch 32 --nome A_pequena_32` |
+| `B1_pequena_32` | `python training/treinar_cnn.py --modelo B1 --backbone pequena --patch 32 --nome B1_pequena_32` |
 
 ## 2. Backbones pré-treinados (ImageNet), 64 px
 
 | Nome | Comando |
 |---|---|
-| `A_regnety_64` | `python treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64` |
-| `B1_regnety_64` | `python treinar_cnn.py --modelo B1 --backbone regnety_016 --patch 64 --nome B1_regnety_64` |
-| `A_effv2s_64` | `python treinar_cnn.py --modelo A --backbone tf_efficientnetv2_s --patch 64 --nome A_effv2s_64` |
-| `B1_effv2s_64` | `python treinar_cnn.py --modelo B1 --backbone tf_efficientnetv2_s --patch 64 --nome B1_effv2s_64` |
-| `A_resnet50_64` | `python treinar_cnn.py --modelo A --backbone resnet50 --patch 64 --nome A_resnet50_64` |
-| `B1_resnet50_64` | `python treinar_cnn.py --modelo B1 --backbone resnet50 --patch 64 --nome B1_resnet50_64` |
-| `A_coatnet0_64` | `python treinar_cnn.py --modelo A --backbone coatnet_0_rw_224 --patch 64 --nome A_coatnet0_64` |
-| `B1_coatnet0_64` | `python treinar_cnn.py --modelo B1 --backbone coatnet_0_rw_224 --patch 64 --nome B1_coatnet0_64` |
+| `A_regnety_64` | `python training/treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64` |
+| `B1_regnety_64` | `python training/treinar_cnn.py --modelo B1 --backbone regnety_016 --patch 64 --nome B1_regnety_64` |
+| `A_effv2s_64` | `python training/treinar_cnn.py --modelo A --backbone tf_efficientnetv2_s --patch 64 --nome A_effv2s_64` |
+| `B1_effv2s_64` | `python training/treinar_cnn.py --modelo B1 --backbone tf_efficientnetv2_s --patch 64 --nome B1_effv2s_64` |
+| `A_resnet50_64` | `python training/treinar_cnn.py --modelo A --backbone resnet50 --patch 64 --nome A_resnet50_64` |
+| `B1_resnet50_64` | `python training/treinar_cnn.py --modelo B1 --backbone resnet50 --patch 64 --nome B1_resnet50_64` |
+| `A_coatnet0_64` | `python training/treinar_cnn.py --modelo A --backbone coatnet_0_rw_224 --patch 64 --nome A_coatnet0_64` |
+| `B1_coatnet0_64` | `python training/treinar_cnn.py --modelo B1 --backbone coatnet_0_rw_224 --patch 64 --nome B1_coatnet0_64` |
 
 O CoAtNet é o que mais pede dado: rode só se os outros mostrarem que o contexto
 ajuda. Se faltar memória na GPU, acrescente `--lote 32`.
@@ -139,7 +149,7 @@ for combo in "A pequena 32 pequena" "B1 pequena 32 pequena" \
              "A resnet50 64 resnet50" "B1 resnet50 64 resnet50" \
              "A coatnet_0_rw_224 64 coatnet0" "B1 coatnet_0_rw_224 64 coatnet0"; do
   set -- $combo
-  python treinar_cnn.py --modelo $1 --backbone $2 --patch $3 --nome ${1}_${4}_${3} \
+  python training/treinar_cnn.py --modelo $1 --backbone $2 --patch $3 --nome ${1}_${4}_${3} \
       2>&1 | tee /srv/almacen/db_images/runs_cnn/log_${1}_${4}_${3}.txt
 done
 ```
@@ -152,7 +162,7 @@ não dá para desfazer):
 
 ```bash
 rm -r /srv/almacen/db_images/runs_cnn/A_regnety_64
-python treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64
+python training/treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64
 ```
 
 Troque `A_regnety_64` pelo nome da rodada. Alternativa sem apagar: rodar com
@@ -163,7 +173,7 @@ menor e float32 puro:
 
 ```bash
 rm -r /srv/almacen/db_images/runs_cnn/A_regnety_64
-python treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64 --lr 3e-4 --amp 0
+python training/treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --nome A_regnety_64 --lr 3e-4 --amp 0
 ```
 
 ## 3. Comparar as rodadas
@@ -185,6 +195,15 @@ Olhar a linha **FORA DO FOLD (todos)** de cada rodada (ou a célula 9 do
 | `A_coatnet0_64` | | | | | | |
 | `B1_coatnet0_64` | | | | | | |
 
+Mosaico sazonal (`_shm`; referência = AUC por ponto do GTB no sazonal):
+
+| Nome | ap_ponto | ap_ganho | boyce | top10 | auc_ponto | melhor época média |
+|---|---|---|---|---|---|---|
+| `A_pequena_32_shm` | | | | | | |
+| `B1_pequena_32_shm` | | | | | | |
+| `A_regnety_64_shm` | | | | | | |
+| `B1_regnety_64_shm` | | | | | | |
+
 ## 4. Teste final (uma vez, só com o escolhido)
 
 Épocas fixas = média das melhores épocas do CV (`historico_fold*.csv` /
@@ -192,7 +211,7 @@ célula 9). Exemplo com o RegNetY no modelo A:
 
 | Nome | Comando |
 |---|---|
-| `A_regnety_64_teste` | `python treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --teste --epocas 20 --nome A_regnety_64_teste` |
+| `A_regnety_64_teste` | `python training/treinar_cnn.py --modelo A --backbone regnety_016 --patch 64 --teste --epocas 20 --nome A_regnety_64_teste` |
 
 Troque modelo/backbone/épocas pelo escolhido, mantendo o sufixo `_teste`.
 Atenção: enquanto os mapas RF/GTB usados nos pseudo-rótulos forem os treinados
@@ -205,24 +224,24 @@ df -h /srv/almacen                       # espaço livre (≈ 10–24 GB por mod
 du -sh /srv/almacen/db_images/*           # quanto cada pasta ocupa
 
 # 1) canais em pedaços 6×6 por célula — uma rodada por modelo (só o escolhido)
-python baixar_tiles.py --modelo A          # → tiles_cnn/canais_A/<LxCy>/<LxCy>_r<i>c<j>.tif
-python baixar_tiles.py --modelo B1         # → tiles_cnn/canais_B1/...
+python building_db/baixar_tiles.py --modelo A          # → tiles_cnn/canais_A/<LxCy>/<LxCy>_r<i>c<j>.tif
+python building_db/baixar_tiles.py --modelo B1         # → tiles_cnn/canais_B1/...
 
 # 2) predição pedaço a pedaço (sem GEE); --sub 2 se faltar memória, --lote menor na GPU
-python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 3 --celulas L2C3,L3C3
-python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1
+python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 3 --celulas L2C3,L3C3
+python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1
 #    → <rodada>/mapas_passo1/pedacos/<LxCy>/p_<LxCy>_r<i>c<j>.tif e <rodada>/mapas_passo1/p_<LxCy>.tif
 
 # 3) bordas: diagnóstico e preenchimento com as células vizinhas → mapas_passo<k>_preenchido/
-python preencher_bordas.py --preencher --interpolar 10
+python predict/preencher_bordas.py --preencher --interpolar 10
 
 # 4) conferir no navegador (opcional)
-streamlit run app_visualizar.py --server.port 8501 --server.headless true
+streamlit run predict/app_visualizar.py --server.port 8501 --server.headless true
 
 # 5) subir ao GEE → projects/mapbiomas-arida/mine/cnn_favorabilidade
-python juntar_mapas_gee.py            # 1 GeoTIFF por rodada e passo em runs_cnn/upload_gee/
+python predict/juntar_mapas_gee.py            # 1 GeoTIFF por rodada e passo em runs_cnn/upload_gee/
 #    upload à mão no Code Editor, depois:
-python propriedades_mapas_gee.py
+python predict/propriedades_mapas_gee.py
 ```
 
 Mapas em UInt16 (p × 10000, 0 = sem dado), como o `favorabilidade_ml`. A
@@ -236,16 +255,16 @@ Baixe só o modelo de canais da rodada escolhida (A **ou** B1). Rode num `tmux`
 (são 25 células × 36 pedaços = 900 pedidos ao GEE) e guarde o log:
 
 ```bash
-cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
 df -h /srv/almacen                                    # espaço livre antes
 mkdir -p /srv/almacen/db_images/tiles_cnn
 
 # teste rápido: 1 célula (36 pedaços) — confere tempo, tamanho e % com dado
-python baixar_tiles.py --modelo A --celulas L2C3
+python building_db/baixar_tiles.py --modelo A --celulas L2C3
 
 # área toda (pula os pedaços já gravados)
-python baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt
-python baixar_tiles.py --modelo B1 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_B1.txt
+python building_db/baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt
+python building_db/baixar_tiles.py --modelo B1 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_B1.txt
 ```
 
 Com `tmux` (continua rodando se a conexão SSH cair):
@@ -255,8 +274,8 @@ tmux new -s tiles                         # abre a sessão "tiles"
 
 # dentro do tmux:
 conda activate py_gee
-cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
-python baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
+python building_db/baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt
 
 # sair sem parar o processo: Ctrl+b, solta, d
 ```
@@ -272,9 +291,9 @@ Os dois modelos em sequência numa só sessão, sem precisar entrar:
 
 ```bash
 tmux new -d -s tiles "bash -lc 'conda activate py_gee && \
-  cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL && \
-  python baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt && \
-  python baixar_tiles.py --modelo B1 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_B1.txt; exec bash'"
+  cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa && \
+  python building_db/baixar_tiles.py --modelo A 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_A.txt && \
+  python building_db/baixar_tiles.py --modelo B1 2>&1 | tee /srv/almacen/db_images/tiles_cnn/log_baixar_B1.txt; exec bash'"
 ```
 
 O `exec bash` no fim deixa a sessão aberta depois de terminar, para ver a
@@ -307,7 +326,7 @@ para desfazer):
 
 ```bash
 rm -r /srv/almacen/db_images/tiles_cnn/canais_A/L2C3
-python baixar_tiles.py --modelo A --celulas L2C3
+python building_db/baixar_tiles.py --modelo A --celulas L2C3
 ```
 
 Se mudar `--n` ou `--borda`, apague a pasta `canais_<modelo>` inteira antes:
@@ -325,9 +344,9 @@ Roda em qualquer máquina; uma task por célula (~1 GB cada, o GEE pode dividir
 em mais de um arquivo), na pasta `tiles_cnn_gee/` do Drive da conta EE:
 
 ```bash
-python exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17
-python exportar_tiles_drive.py --modelo B1 --projeto ee-solkancengine17
-python exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17 --celulas L2C3   # teste
+python building_db/exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17
+python building_db/exportar_tiles_drive.py --modelo B1 --projeto ee-solkancengine17
+python building_db/exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17 --celulas L2C3   # teste
 ```
 
 Retomável: tasks com a mesma descrição (pendentes, rodando ou concluídas) são
@@ -349,7 +368,7 @@ de `tiles_cnn_gee/` podem ser apagados (~18 GB por modelo).
 para `gdrive:prospectra/tiles_cnn/canais_<modelo>` e é apagado do disco:
 
 ```bash
-python baixar_tiles.py --modelo A --destino drive        # outro remote: --remoto ou TILES_REMOTO
+python building_db/baixar_tiles.py --modelo A --destino drive        # outro remote: --remoto ou TILES_REMOTO
 ```
 
 **Trazer do Drive para o servidor** (para rodar `inferir_cnn.py` no servidor):
@@ -378,24 +397,24 @@ treinou com todas as ocorrências — o mesmo fold em todas as rodadas, porque a
 divisão é a mesma. Não escolher o fold pelo `ap_ponto`: cada fold é medido em
 células diferentes, só 2 têm ocorrência e o vencedor treinou sem metade delas.
 `--folds 2` força um fold. Não misture modelos na mesma
-`mapas_passo<k>/`: se já houver pedaços feitos com outros, o script para —
-apague a pasta ou use `--saida`.
+`mapas_passo<k>/`: se já houver pedaços feitos com outros, o script para. Para
+guardar as duas versões, use a rodada irmã `<nome>_1fold` (abaixo).
 
 Ordem sugerida: `--passo 3` numa célula (teste rápido, confere o mapa) →
 `--passo 3` na área toda (comparar as rodadas) → `--passo 1` só na escolhida.
 
 | Rodada | Pedaços | Teste (1 célula, passo 3) | Área toda (passo 3) |
 |---|---|---|---|
-| `A_pequena_32` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3 --folds auto` |
-| `B1_pequena_32` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3 --folds auto` |
-| `A_regnety_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3 --folds auto` |
-| `B1_regnety_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3 --folds auto` |
-| `A_effv2s_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3 --folds auto` |
-| `B1_effv2s_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3 --folds auto` |
-| `A_resnet50_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3 --folds auto` |
-| `B1_resnet50_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3 --folds auto` |
-| `A_coatnet0_64` | `canais_A` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3 --folds auto` |
-| `B1_coatnet0_64` | `canais_B1` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3 --folds auto --celulas L2C3` | `python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3 --folds auto` |
+| `A_pequena_32` | `canais_A` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_pequena_32 --tiles padrao --passo 3` |
+| `B1_pequena_32` | `canais_B1` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_pequena_32 --tiles padrao --passo 3` |
+| `A_regnety_64` | `canais_A` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 3` |
+| `B1_regnety_64` | `canais_B1` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --tiles padrao --passo 3` |
+| `A_effv2s_64` | `canais_A` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_effv2s_64 --tiles padrao --passo 3` |
+| `B1_effv2s_64` | `canais_B1` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_effv2s_64 --tiles padrao --passo 3` |
+| `A_resnet50_64` | `canais_A` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_resnet50_64 --tiles padrao --passo 3` |
+| `B1_resnet50_64` | `canais_B1` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_resnet50_64 --tiles padrao --passo 3` |
+| `A_coatnet0_64` | `canais_A` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_coatnet0_64 --tiles padrao --passo 3` |
+| `B1_coatnet0_64` | `canais_B1` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3 --celulas L2C3` | `python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/B1_coatnet0_64 --tiles padrao --passo 3` |
 
 Saída: `runs_cnn/<rodada>/mapas_passo3/p_<LxCy>.tif` (e `pedacos/` por célula).
 Se faltar memória: `--sub 2` (divide cada pedaço em 2 × 2); na GPU, `--lote 128`.
@@ -405,20 +424,56 @@ Todas as rodadas treinadas, em sequência, num `tmux` (pula as que não têm `.p
 ```bash
 tmux new -s predict
 conda activate py_DL
-cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
 for nome in A_pequena_32 B1_pequena_32 A_regnety_64 B1_regnety_64 A_effv2s_64 B1_effv2s_64 \
             A_resnet50_64 B1_resnet50_64 A_coatnet0_64 B1_coatnet0_64; do
   run=/srv/almacen/db_images/runs_cnn/$nome
   ls $run/*.pt >/dev/null 2>&1 || { echo "pulando $nome (sem .pt)"; continue; }
-  python inferir_cnn.py --run $run --tiles padrao --passo 3 --folds auto 2>&1 | tee $run/log_inferir_passo3.txt
+  python predict/inferir_cnn.py --run $run --tiles padrao --passo 3 2>&1 | tee $run/log_inferir_passo3.txt
 done
 # Ctrl+b, d para sair sem parar
 ```
 
+### Um fold só: rodada irmã `<nome>_1fold`
+
+A média dos 5 folds custa 5× (a CoAtNet levou ~7 h por célula no passo 3). Com
+`--folds auto` a predição usa 1 modelo. Como o resultado é outro, vai para uma
+**rodada irmã** `runs_cnn/<nome>_1fold/`, com links para os `.pt`, o
+`config.json` e o `metricas_folds.csv` da original: a `mapas_passo<k>/` da
+original (média dos 5) não é tocada, e as etapas seguintes (`preencher_bordas.py`,
+`juntar_mapas_gee.py`, `subir_predicao_gee.py`, `app_visualizar.py`) tratam a
+`_1fold` como uma rodada qualquer — no visualizador dá para ver a diferença entre
+as duas.
+
+```bash
+tmux new -s predict1
+conda activate py_DL
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
+RUNS=/srv/almacen/db_images/runs_cnn
+for nome in A_regnety_64 A_effv2s_64 A_resnet50_64 A_coatnet0_64 ; do
+  src=$RUNS/$nome; run=$RUNS/${nome}_1fold
+  ls $src/*.pt >/dev/null 2>&1 || { echo "pulando $nome (sem .pt)"; continue; }
+  mkdir -p $run
+  ln -sf $src/*.pt $src/config.json $src/metricas_folds.csv $run/     # links, não copia os modelos
+  python predict/inferir_cnn.py --run $run --tiles padrao --passo 3 --folds auto 2>&1 | tee $run/log_inferir_passo3.txt
+done
+```
+
+- Saída: `runs_cnn/<nome>_1fold/mapas_passo3/p_<LxCy>_<nome>_1fold.tif`.
+- O log mostra `fold <k>: sem ocorrência na validação …` — o mesmo `k` em todas
+  as rodadas (a divisão é a mesma).
+- Retomável: rodar de novo pula os pedaços já previstos.
+- Apagar uma irmã: `rm -r $RUNS/<nome>_1fold` (só links; os `.pt` originais ficam).
+- As `_1fold` não têm `oof_validacao.csv`: não entram (ou entram sem métricas) no
+  ranking do `cnn_colab` — a comparação entre rodadas continua sendo a da
+  validação cruzada.
+- No Colab (`cnn_predict_colab.ipynb`, célula 7), `FOLDS = 'auto'` faz o mesmo,
+  mas grava na `mapas_passo<k>/` da rodada escolhida.
+
 Mapa final (passo 1) — só a rodada escolhida, de preferência a `_teste`:
 
 ```bash
-python inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1 \
+python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --tiles padrao --passo 1 \
     2>&1 | tee /srv/almacen/db_images/runs_cnn/A_regnety_64_teste/log_inferir_passo1.txt
 ```
 
@@ -433,9 +488,9 @@ novo). O preenchimento grava `mapas_passo<k>_preenchido/` sem tocar nos
 originais.
 
 ```bash
-python preencher_bordas.py                                   # diagnóstico, todas as rodadas com .pt
-python preencher_bordas.py --preencher --interpolar 10       # preenche todas (vizinhas + até 10 px interpolados)
-python preencher_bordas.py --mapas /srv/almacen/db_images/runs_cnn/B1_coatnet0_64/mapas_passo3 \
+python predict/preencher_bordas.py                                   # diagnóstico, todas as rodadas com .pt
+python predict/preencher_bordas.py --preencher --interpolar 10       # preenche todas (vizinhas + até 10 px interpolados)
+python predict/preencher_bordas.py --mapas /srv/almacen/db_images/runs_cnn/B1_coatnet0_64/mapas_passo3 \
     --tiles /srv/almacen/db_images/tiles_cnn/canais_B1      # uma pasta
 ```
 
@@ -452,8 +507,8 @@ arquivos locais (sem GEE). Instalar uma vez: `pip install streamlit plotly` no
 ```bash
 tmux new -s app
 conda activate py_DL
-cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
-streamlit run app_visualizar.py --server.port 8501 --server.headless true
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
+streamlit run predict/app_visualizar.py --server.port 8501 --server.headless true
 ```
 
 No seu computador: `ssh -p 2222 -N -L 8501:localhost:8501 superusuario@192.168.25.250`
@@ -472,8 +527,8 @@ Storage da solkanCengine17 passou da cota).** Uma imagem por rodada e passo
 (as 25 células juntas):
 
 ```bash
-python juntar_mapas_gee.py                 # todas as rodadas → runs_cnn/upload_gee/<rodada>_p<k>[_preenchido].tif
-python juntar_mapas_gee.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --passo 3
+python predict/juntar_mapas_gee.py                 # todas as rodadas → runs_cnn/upload_gee/<rodada>_p<k>[_preenchido].tif
+python predict/juntar_mapas_gee.py --run /srv/almacen/db_images/runs_cnn/B1_regnety_64 --passo 3
 ```
 
 Gera também `upload_gee/propriedades_upload.csv` (asset e propriedades de cada
@@ -489,8 +544,8 @@ Depois dos uploads, grave as propriedades a partir do CSV (pula os que ainda
 não subiram; pode rodar de novo a cada leva):
 
 ```bash
-python propriedades_mapas_gee.py --conferir     # só mostra
-python propriedades_mapas_gee.py
+python predict/propriedades_mapas_gee.py --conferir     # só mostra
+python predict/propriedades_mapas_gee.py
 ```
 
 A conta EE ativa do servidor precisa escrever em `mapbiomas-arida/mine`; o
@@ -513,9 +568,9 @@ Sem argumentos sobe todas as rodadas e passos de `RUNS_DIR`; pula as imagens que
 já existem (`--sobrescrever` reenvia).
 
 ```bash
-python subir_predicao_gee.py                                    # tudo
-python subir_predicao_gee.py --passo 3                          # passo 3 de todas
-python subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
+python predict/subir_predicao_gee.py                                    # tudo
+python predict/subir_predicao_gee.py --passo 3                          # passo 3 de todas
+python predict/subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64_teste --passo 1
 ```
 
 Arquivos em `gs://cengine17-acervo-cprm/cnn_favorabilidade/<rodada>/<pasta>/`,

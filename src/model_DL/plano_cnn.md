@@ -70,7 +70,7 @@ Congelar as primeiras camadas, treinar a cabeça, descongelar aos poucos.
 ## Decisões de execução (2026-10-22)
 
 - **Ambiente:** duas versões, Colab e GPU local, com o mesmo código:
-  módulos `.py` em `src/model_DL/` e um notebook que só chama esses módulos,
+  módulos `.py` em `src/model_DL/regiao_completa/` e um notebook que só chama esses módulos,
   com `AMBIENTE = 'colab' | 'local'` definindo caminhos (Drive × disco).
 - **Mosaico:** só o v1 (`aster-mosaico-final`), onde estão os pseudo-rótulos
   e onde o RF/GTB foram melhores.
@@ -85,6 +85,32 @@ Congelar as primeiras camadas, treinar a cabeça, descongelar aos poucos.
   milhões de pixels de 30 m): passo de 1 pixel ≈ 10¹⁷ FLOP (~1–3 h numa GPU
   com fp16); passo de 3 pixels (90 m) ≈ 9× menos. Começar com passo 3 por
   célula da grid; passo 1 na versão final.
+
+## Modelo no mosaico sazonal harmonizado (2026-11-02)
+
+Mesmo desenho (rótulos, modelos A e B1, divisão, métricas); muda a entrada.
+Checklist passo a passo: `src/modeling/regiao_completa/CHECKLIST_modelagem_sazonal.md`.
+
+- **Mosaico:** `mine/aster-mosaico-final_sazonal_hm_razao` (`MOSAICO` no
+  `exportar_patches.py`; v1 = `aster-mosaico-final`). Mesma grade de 15 m do v1
+  (`X0`, `Y0`, `RES` não mudam), 25 células.
+- **Escala:** reflectância de superfície × 1000 (v1: TOA × 1000); TIR em DN, casado
+  com a temperatura do Landsat. Os canais `log_B*` e os índices mudam de valor:
+  patches, pesos e mapas do v1 não se misturam com os do sazonal. Treino do zero
+  (ImageNet), sem partir de rodadas do v1.
+- **`swir_estimado`:** recalculado pela `origem` (≥ 2) em `imagem_canais`, porque o
+  mosaico salvo marcou só a origem 2 (a origem 3 = B no lugar do A com nuvem também é
+  estimada). `origem` vai de 1 a 3 (no v1, 1 a 4).
+- **Pseudo-rótulos:** `favorabilidade_ml` filtrado por
+  `mosaico = aster-mosaico-final_sazonal_hm_razao` → precisa dos mapas RF/GTB do
+  sazonal antes do sorteio. Limiares (`P_POS`, `P_NEG`, `P_DIF_MAX`) mantidos; revisar
+  só se o número de positivos mudar muito.
+- **Referência:** a AUC por ponto do GTB no sazonal (célula de fora,
+  `avaliar_maxent.ipynb`) substitui o 0,84 do v1 como barra.
+- **Pastas:** as do v1 renomeadas para `*_v1` (`patches_cnn_v1`, `tiles_cnn_v1`,
+  `runs_cnn_v1`); os caminhos padrão passam a ser do sazonal.
+- **Nomes:** rodadas com `_shm` (`A_regnety_64_shm`, `..._shm_teste`); os scripts de
+  upload tiram dele a propriedade `mosaico` e os assets não colidem com os do v1.
 
 ## Ainda em aberto
 

@@ -284,7 +284,7 @@ function mascaraNuvemASTER(imgToa) {
 
     return addIndicesASTER(imgToa)
                 .updateMask(clear)
-                copyProperties(imgToa, imgToa.propertyNames());
+                .copyProperties(imgToa, imgToa.propertyNames());
 }
 
 // 👉 FUNÇÃO QUALIDADE APRIMORADA (PARA QUALITYMOSAIC)

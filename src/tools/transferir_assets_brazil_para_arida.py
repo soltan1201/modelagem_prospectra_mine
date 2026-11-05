@@ -46,10 +46,12 @@ DESTINO = 'projects/mapbiomas-arida/mine'
 
 # coleção na origem → coleção no destino (comente as que não quiser transferir)
 COLECOES = {
-    'ASTER':        'ASTER',
-    'ASTER_0cloud': 'ASTER_0cloud',
-    'ASTER_MOSAIC': 'ASTER_MOSAIC',
-    'ASTER_v4':     'ASTER_v4',
+    'ASTER_sazonal': 'ASTER_sazonal',   # build_mosaico_sazonal_seco.py (A/B seco)
+    # já transferidas em 2026-10-12:
+    # 'ASTER':        'ASTER',
+    # 'ASTER_0cloud': 'ASTER_0cloud',
+    # 'ASTER_MOSAIC': 'ASTER_MOSAIC',
+    # 'ASTER_v4':     'ASTER_v4',
     # 'ASTER_v3':            'ASTER_v3',              # vazia em 2026-10-12
     # 'aster-mosaico-final': 'aster-mosaico-final',   # vazia na origem; o destino já existe
 }

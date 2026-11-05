@@ -148,7 +148,7 @@ function mascaraNuvemASTER(imgToa) {
 
     return imgToa.addBands([ndvi])
                 .updateMask(clear)
-                copyProperties(imgToa, imgToa.propertyNames());
+                .copyProperties(imgToa, imgToa.propertyNames());
 }
 
 // ------- 4. CORREÇÃO: GLCM COM CONVERSÃO PARA BYTE -------

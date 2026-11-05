@@ -16,6 +16,7 @@ abaixo valem para o JS; para os `.py`:
   dispara; dedupe contra assets salvos e tasks ativas;
 - falha típica: conta sem leitura da origem/destino (superconta em
   mapbiomas-arida) — o script descarta a conta, não contornar.
+Mosaico sazonal seco (A/B) e harmonização: skill `mosaico-sazonal-seco`.
 
 ## Pré-condições
 - O usuário informa `ano` e, implícita ou explicitamente, o semestre

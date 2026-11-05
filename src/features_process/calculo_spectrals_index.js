@@ -382,26 +382,28 @@ function adicionarIndicesGeo(img) {
     
     return img.addBands([ndvi, aloh, carbonate, fe3, savi]);
 }
-
+var mosaico_final = ee.ImageCollection('projects/mapbiomas-arida/mine/aster-mosaico-final');
+mosaico_final = mosaico_final.mosaic();
+print(mosaico_final)
 mosaico_final = adicionarIndicesGeo(mosaico_final);
-
-var mineral = addMineralIndices(imgClean);
+print(mosaico_final)
+var imgComMineral = addMineralIndices(mosaico_final);
 
 // Composições coloridas clássicas
 Map.addLayer(
-  mineral.select(['sultan_r','sultan_g','sultan_b']),
+  imgComMineral.select(['sultan_r','sultan_g','sultan_b']),
   {min: 0.6, max: 2.5},
   'Sultan RGB'
 );
 
 Map.addLayer(
-  mineral.select(['abrams_r','abrams_g','abrams_b']),
+  imgComMineral.select(['abrams_r','abrams_g','abrams_b']),
   {min: 0.6, max: 2.5},
   'Abrams RGB'
 );
 // Exemplo de uso no Google Earth Engine
 Map.addLayer(
-    imgComMineral.select('sultan_r').divide('sultan_b').divide('sultan_g'),
+    mosaico_final.select('sultan_r').divide('sultan_b').divide('sultan_g'),
     visualizacao_indices['sultan_r'],
     'Sultan RGB - Minerais'
 );
@@ -419,7 +421,7 @@ Map.addLayer(
 );
 
 Map.addLayer(
-    imgComTextura.select('AST_NIR_807nm_hom'),
+    imgComMineral.select('AST_NIR_807nm_hom'),
     visualizacao_indices['hom'],
     'Homogeneidade da Textura'
 );
@@ -443,4 +445,4 @@ var legenda = ui.Panel({
     style: { padding: '10px' }
   });
 
-Map.addLayer(legenda, {position: 'bottom-right'});
+// Map.addLayer(legenda, {position: 'bottom-right'});

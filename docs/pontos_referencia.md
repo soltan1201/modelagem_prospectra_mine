@@ -7,7 +7,7 @@ Códigos R1–R7 seguem `src/dowloadQGIS/ACERVO_CPRM_IRECE.md`, seção 7.
 
 ## 0. Asset unificado `pontos_referencia`
 
-`src/modeling/preparar_pontos_referencia.py` junta tudo num asset só
+`src/modeling/regiao_completa/preparar_pontos_referencia.py` junta tudo num asset só
 (`projects/mapbiomas-arida/mine/pontos_referencia`, e CSV em
 `src/Dados/referencias/pontos_referencia.csv`), com `alvo`, `fonte`, `papel`,
 `subst` padronizada e `CODIGO_OBJ` único. Duplicatas do mesmo alvo a ≤ 500 m

@@ -13,7 +13,10 @@ por cena) → `projects/mapbiomas-arida/mine/ASTER_MOSAIC_v2`. Pré-condições:
 existem; CSV de pares e de coeficientes em `src/Dados/...` e
 `models/zero_cloud/`. Falha conhecida: treino grande demais →
 "Image.classify: Computed value is too large" (reduzir `N_MAX_TREINO`).
-As seções abaixo descrevem o GBT legado (`estimate_swir_gee.py`).
+Grupos `sazonal_seco` / `sazonal_pareado` (2026-10-29): pré-condição
+`points_sazonal_seco_A` (e `_B` para o pareado) e os mosaicos
+`mine/ASTER_sazonal/ASTER_sazonal_B_seco_quality_<LxCy>`; célula sem mosaico B sai
+`sem_entrada`. As seções abaixo descrevem o GBT legado (`estimate_swir_gee.py`).
 
 ## Pré-condições
 - `ee.Initialize(project='mapbiomas-caatinga-cloud02')` deve suceder

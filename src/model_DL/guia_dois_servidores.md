@@ -81,6 +81,20 @@ no .251 em `sudo journalctl -u sshd -n 20`.
 
 ## 3. Copiar código, imagens e modelos (no .250, dentro de um `tmux`)
 
+O `tmux` mantém o comando rodando quando o `ssh` cai ou o terminal fecha.
+
+| O quê | Comando |
+|---|---|
+| Criar sessão | `tmux new -s copia` |
+| Sair sem parar o que roda (detach) | `Ctrl+b`, solta, depois `d` |
+| Listar sessões | `tmux ls` |
+| Voltar para a sessão | `tmux attach -t copia` (ou `tmux a -t copia`) |
+| Rolar a saída | `Ctrl+b`, depois `[`; setas/PgUp; `q` sai |
+| Encerrar a sessão | `exit` dentro dela, ou `tmux kill-session -t copia` |
+
+Se `tmux new -s copia` disser `duplicate session`, a sessão já existe: use
+`tmux attach -t copia`. O mesmo vale para a sessão `predict` (seção abaixo).
+
 ```bash
 tmux new -s copia
 
@@ -141,7 +155,7 @@ dele. O que já foi gravado é pulado.
 for nome in A_regnety_64 A_effv2s_64 A_resnet50_64 A_coatnet0_64; do
   run=/srv/almacen/db_images/runs_cnn/$nome
   ls $run/*.pt >/dev/null 2>&1 || { echo "pulando $nome (sem .pt)"; continue; }
-  python inferir_cnn.py --run $run --tiles padrao --passo 3 2>&1 | tee -a $run/log_inferir_passo3.txt
+  python predict/inferir_cnn.py --run $run --tiles padrao --passo 3 2>&1 | tee -a $run/log_inferir_passo3.txt
 done
 ```
 
@@ -150,11 +164,11 @@ done
 ```bash
 tmux new -s predict
 conda activate py_DL
-cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
 for nome in B1_regnety_64 B1_effv2s_64 B1_resnet50_64 B1_coatnet0_64; do
   run=/srv/almacen/db_images/runs_cnn/$nome
   ls $run/*.pt >/dev/null 2>&1 || { echo "pulando $nome (sem .pt)"; continue; }
-  python inferir_cnn.py --run $run --tiles padrao --passo 3 --lote 512 2>&1 | tee $run/log_inferir_passo3.txt
+  python predict/inferir_cnn.py --run $run --tiles padrao --passo 3 --lote 512 2>&1 | tee $run/log_inferir_passo3.txt
 done
 # Ctrl+b, d para sair sem parar
 ```

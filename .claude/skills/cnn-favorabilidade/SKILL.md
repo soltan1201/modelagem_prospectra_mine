@@ -16,7 +16,17 @@ referência: skill `modelagem-favorabilidade`.
 Arch Linux, conda `py_gee`/`py_DL`, GPU local ou Colab). Claude escreve e
 confere a sintaxe; não roda treino, exportação, download nem inferência.
 
-## Scripts (`src/model_DL/`)
+## Scripts (`src/model_DL/regiao_completa/`; os `.md` ficam em `src/model_DL/`)
+
+Três subpastas; comandos rodam de `src/model_DL/regiao_completa/` com o prefixo da pasta
+(`python building_db/exportar_patches.py`). Os scripts acham os vizinhos pelo `sys.path`
+das três pastas. No Drive (Colab) os `.py` continuam numa pasta só (`models_scripts`).
+
+- `building_db/`: exportar_patches, exportar_patches_drive, tfrecord_para_npz, baixar_tiles,
+  exportar_tiles_drive, cortar_tiles_drive, copiar_tifs_colab.ipynb
+- `training/`: treinar_cnn, cnn_colab_final.ipynb
+- `predict/`: inferir_cnn, preencher_bordas, juntar_mapas_gee, subir_predicao_gee,
+  propriedades_mapas_gee, app_visualizar, cnn_predict_colab.ipynb
 
 | Script | Papel |
 |---|---|

@@ -119,13 +119,13 @@ de [docs/analise_fluxo_prospeccao_e_plano_irece.md](docs/analise_fluxo_prospecca
 | `ASTER_mosaico_unico` | `build_mosaico_unico.py` etapa 2 | 21/25 (faltam L3C2–L3C5; a etapa 3 não depende dela) |
 | `ASTER_mosaico_unico_final` | `build_mosaico_unico.py` etapa 3 | 25/25 |
 | `acervo_cprm/` | `dowloadQGIS/exportar_acervo_gee.py` | 10 assets |
-| `pontos_referencia` | `modeling/preparar_pontos_referencia.py` | 1.103 pontos: fosfato 47 (antigo+cprm / cprm; treino / validação), carbonato 327, mvt 252, ouro 208, manganês 269 |
+| `pontos_referencia` | `modeling/regiao_completa/preparar_pontos_referencia.py` | 1.103 pontos: fosfato 47 (antigo+cprm / cprm; treino / validação), carbonato 327, mvt 252, ouro 208, manganês 269 |
 | `maxent_amostras_<mosaico>_bandas_indices` | `modeling/maxent_fosfato.py` etapa 1 | 2 (único e v1), 31.860 amostras cada |
-| `favorabilidade_ml` | `modeling/exportar_favorabilidade_ml.py` | fosfato no mosaico v1: RF 25/25 e GTB 25/25 (21 variáveis do SHAP); visualizador `show_mosaics/visualizar_favorabilidade_ml.js` |
-| `cnn_favorabilidade` | `model_DL/subir_predicao_gee.py` | ainda não criada (sobe os mapas da CNN depois da predição) |
+| `favorabilidade_ml` | `modeling/regiao_completa/exportar_favorabilidade_ml.py` | fosfato no mosaico v1: RF 25/25 e GTB 25/25 (21 variáveis do SHAP); visualizador `show_mosaics/visualizar_favorabilidade_ml.js` |
+| `cnn_favorabilidade` | `model_DL/regiao_completa/predict/subir_predicao_gee.py` | ainda não criada (sobe os mapas da CNN depois da predição) |
 | `pontos_fosfato`, `maxent_fosfato_amostras_teste_zero_cloud_2000_2008` | — | antigos; substituídos pelos de cima |
 
-### Avaliação dos modelos (`src/modeling/avaliar_maxent.ipynb`)
+### Avaliação dos modelos (`src/modeling/regiao_completa/avaliar_maxent.ipynb`)
 
 AUC por ponto, validação deixando uma célula da grid de fora (fundo aleatório):
 
@@ -259,11 +259,16 @@ src/
 │                        avaliar_maxent.ipynb (Maxent × RF × GTB + SHAP),
 │                        exportar_favorabilidade_ml.py (RF/GTB no GEE);
 │                        README.md = diário dos testes de modelagem
-├── model_DL/            CNN: exportar_patches.py, treinar_cnn.py, baixar_tiles.py, inferir_cnn.py,
-│                        subir_predicao_gee.py, plano_cnn.md, rodadas_treino.md (comandos),
-│                        cnn_colab.ipynb (mesmos scripts no Colab), guia_gdrive.md,
-│                        guia_dois_servidores.md, ranking_cnns_arquiteturas.md,
-│                        app_visualizar.py (Streamlit: mapas de p × RGB/índices)
+├── model_DL/            CNN — na raiz só os .md: plano_cnn.md, rodadas_treino.md (comandos),
+│   │                    guia_gdrive.md, guia_dois_servidores.md, ranking_cnns_arquiteturas.md
+│   ├── regiao_completa/ scripts da área toda (grid 5 × 5, pseudo-rótulos do favorabilidade_ml)
+│   │   ├── building_db/ patches e tiles: exportar_patches.py (+ _drive), tfrecord_para_npz.py,
+│   │   │                baixar_tiles.py, exportar_tiles_drive.py, cortar_tiles_drive.py
+│   │   ├── training/    treinar_cnn.py, cnn_colab_final.ipynb (treino no Colab)
+│   │   └── predict/     inferir_cnn.py, preencher_bordas.py, juntar_mapas_gee.py,
+│   │                    subir_predicao_gee.py, propriedades_mapas_gee.py, cnn_predict_colab.ipynb,
+│   │                    app_visualizar.py (Streamlit: mapas de p × RGB/índices)
+│   └── area_reduzida/   CNN da área reduzida (favorabilidade_AR) — ainda vazia
 ├── dowloadQGIS/         Acervo SIG SGB/CPRM: catálogo, download, .grd → tif, envio ao GEE
 │                        (ACERVO_CPRM_IRECE.md = documento central)
 ├── features_process/    biblioteca de índices espectrais (JS); exportar_mosaicos_indices

@@ -13,6 +13,15 @@ Convenções dos dados (iguais em todo o pipeline v4 / zero-cloud):
   pixels se mostraram nuvem (TIR frio), não solo claro — ver
   `building_dataset/saturacao_landsat_piloto.py`. Saem de todas as amostras.
 
+## Organização da pasta
+
+| Pasta | Conteúdo |
+|---|---|
+| `./` | estimativa do SWIR (`train_swir_models*`, `estimar_swir_rf*`, `estimate_swir_gee*`) |
+| `regiao_completa/` | favorabilidade na região toda só com bandas do mosaico + índices espectrais: `preparar_pontos_referencia.py`, `models_ML_fosfato.py` (Maxent + amostras), `baixar_*_maxent.py`, `avaliar_maxent.ipynb`, `selecao_variaveis_RC.ipynb` (variáveis + fundo por cluster, folds = células da grid 5 × 5), `exportar_favorabilidade_ml.py` (por célula), `maxent_alvos.js`, `export_points_mosaic.js`, `CHECKLIST_modelagem_sazonal.md`, registros `registro_favorabilidade_ml_*.csv` |
+| `area_reduzida/` | favorabilidade na área reduzida com mosaico + variáveis CPRM (gama, mag, geologia): `amostras_AR.py`, `selecao_variaveis_AR.ipynb`, `exportar_favorabilidade_AR.py`, `novas_areas_estudo.js`. Importa `models_ML_fosfato` e `exportar_favorabilidade_ml` de `regiao_completa/` |
+| `models/` | saídas locais (JSON, CSV, figuras) das três frentes, compartilhada |
+
 ## Fluxo atual (resumo)
 
 ```
@@ -381,6 +390,53 @@ só existe no mosaico 2000–2008; para 2009–2020 dependeria do SWIR estimado.
 cobertura nos pontos não há amostras de presença. Refazer com o
 `aster-mosaico-final` e `FEATURES_MODO = 'bandas+indices'`.
 
+## 8. Área reduzida (AR): fundo de treino por cluster (`selecao_variaveis_AR.ipynb`)
+
+Nas áreas reduzidas, o fundo aleatório inclui pixels parecidos com as ocorrências
+de fosfato (a mesma rocha sem depósito conhecido). Treinar o RF/GTB com eles como
+"não fosfato" força o modelo a separar detalhes ruidosos. O fundo de treino passa a
+ser escolhido por perfil ambiental (pseudo-ausência; Engler et al. 2004; Senay et
+al. 2013). Contexto e levantamento dos dados: `docs/desafios_bases_dados.md`.
+
+**Plano (2026-10-27)**
+
+1. **Agrupar o fundo.** Todos os pixels de fundo com geofísica (`tem_geofisica = 1`,
+   ~12 400 em Irecê) entram num k-means com **K = 10 fixo** (`K_FUNDO`). Variáveis
+   (`VARS_CLUSTER`, 14, sem litologia):
+   - gama (5): `eU_ppm`, `eTh_ppm`, `U_Th`, `Th_K`, `eU_res`;
+   - mag (3): `MAG_nT`, `mag_res`, `mag_thg`;
+   - ASTER (6): `sultan_r`, `sultan_g`, `sultan_b`, `B10`, `quartz_14_12`, `phosphorite_rbd`.
+
+   Todas são padronizadas no fundo (média 0, desvio 1), para pesarem igual na distância.
+2. **Cluster fosfato (K + 1).** As ocorrências formam um cluster a mais, que não entra
+   no k-means. O centro é a média das medianas de cada ocorrência (cada ocorrência
+   pesa igual), no mesmo espaço padronizado.
+3. **Distância e ranking.** Distância euclidiana do centro de cada cluster de fundo
+   ao centro do cluster fosfato, nas mesmas 14 variáveis. A célula [10c] ordena os
+   clusters do mais próximo ao mais distante, e a [10b] mostra o mapa e as barras.
+4. **Corte.** O **raio do fosfato** é a distância da ocorrência mais afastada ao centro.
+   Ficam no fundo de treino só os clusters **sem ocorrência e com o centro além do
+   raio**. Se somarem menos de 20% do fundo (`FRAC_MIN_FUNDO`), entram os próximos
+   mais distantes sem ocorrência.
+5. **Validação sem vazamento.** No CV espacial, o agrupamento é refeito em cada fold só
+   com as ocorrências de treino. Só o treino usa o fundo filtrado; AUC, Boyce e top10
+   são medidos contra o fundo aleatório inteiro do fold. A figura, a tabela e o fundo
+   do export usam todas as ocorrências.
+6. **Área toda.** Nos conjuntos `*_area_toda`, cerca de 1/3 do fundo não tem gama nem
+   mag e não pode ser agrupado nas 14 variáveis. Esses conjuntos treinam com o fundo
+   aleatório.
+7. **Export.** A célula [10e] grava `models/cluster_fundo_AR_<area>.json` com a média e o
+   desvio de cada variável, os 10 centros e os clusters de treino. O
+   `exportar_favorabilidade_AR.py` padroniza cada pixel de fundo no GEE, leva-o ao centro
+   mais próximo e treina só com os clusters de treino. O resultado é o mesmo fundo do
+   notebook (conferido: 4.821 px, contagem idêntica por cluster), sem `id_amostra`.
+   O asset ganha o sufixo `_fcl`. Opcionalmente, o script exporta também a imagem
+   `cluster_fundo_AR_<area>` (bandas `cluster` e `treino`) para ver no Code Editor.
+
+**Primeiro resultado (Irecê, todas as ocorrências).** Raio do fosfato 3,69. As
+ocorrências caem em 2 clusters (c5 com 8, c1 com 3; 30% do fundo). Saem do treino 3
+clusters dentro do raio (31%), e ficam 5 clusters (39%, 4 821 px).
+
 ---
 
 ## Arquivos
@@ -397,3 +453,6 @@ cobertura nos pontos não há amostras de presença. Refazer com o
 | `../building_dataset/build_mosaico_final.py` | mosaico final por prioridade (seção 6.2) → `aster-mosaico-final` |
 | `models/zero_cloud/` | figuras, modelos e métricas da versão com pontos pareados |
 | `apontes.md` | notas sobre a correção da saturação do VNIR com Landsat |
+| `amostras_AR.py` | amostras da área reduzida (presença no buffer de 250 m, fundo, geoquímica) → asset `amostras_AR_<area>` e CSV |
+| `selecao_variaveis_AR.ipynb` | redundância, fundo por cluster (seção 8), ablação, ranking SHAP estável, conferência P₂O₅ → `models/variaveis_AR_<area>.json` |
+| `exportar_favorabilidade_AR.py` | mapas RF/GTB da área reduzida no GEE → `favorabilidade_AR` |

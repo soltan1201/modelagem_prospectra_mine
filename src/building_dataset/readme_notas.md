@@ -4,11 +4,81 @@
 
 Construir um dataset de amostras espectrais multitemporais do sensor **ASTER** (Terra/NASA) sobre a região de **Irecê (BA)**, usando mosaicos semestrais de qualidade para extrair pontos representativos de solo exposto / litologia / vegetação em contexto semiárido.
 
-O pipeline está dividido em três etapas sequenciais:
+O pipeline está dividido em três etapas sequenciais (fluxo original, em JS; o fluxo
+atual é o sazonal seco, descrito na seção seguinte):
 
 ---
 
-## Etapas do pipeline
+## Fluxo atual — mosaico sazonal seco (2026-10)
+
+**Por quê:** os mosaicos v1 (prioridade por origem) e único (prioridade à seca)
+ainda mostram emendas entre cenas ("colcha de retalhos"). O `qualityMosaic` pega
+uma cena por pixel e os mosaicos eram montados semestre a semestre, com poucas
+cenas candidatas por célula. No fluxo sazonal, todas as cenas secas do período
+inteiro entram juntas antes de escolher o pixel.
+
+**Teste que definiu o fluxo:** `mosaico_sazonal_homogeneo.js` (Code Editor) compara,
+por célula, seco × chuvoso e três composições — `quality` (qualityMosaic),
+`mediana` e `mediana_norm` (cada cena ajustada à mediana da estação) — com um
+índice de costura (gradiente nas bordas de cena ÷ gradiente fora). Melhor
+resultado visual: **A | seco | quality**. A mediana mistura datas no mesmo pixel e
+perde contraste. O JS tem as mesmas listas de cenas do Python (`BLACKLIST_SECO`,
+`ZERO_CLOUD_SECO`), geradas dos `.txt`; regenerar se os `.txt` mudarem.
+
+**Períodos** (separados porque só A tem SWIR medido):
+
+| Período | Datas | Bandas | Blacklist (seca) | Zero-cloud (seca) |
+|---|---|---|---|---|
+| A | 2000-03-01 a 2008-04-01 (só cenas com B09) | VNIR + SWIR + TIR | 263 cenas | 34 cenas |
+| B | 2009-01-01 a 2021-01-01 | VNIR + TIR | 782 cenas | 229 cenas |
+
+**Regras por cena** (iguais ao JS): estação seca = jun–out de todos os anos do
+período; `CLOUDCOVER < 60`; DN → radiância (GAIN_COEFFICIENT) → TOA 0–1; pixel com
+VNIR DN ≥ 254 mascarado; máscara de nuvem/sombra só com VNIR + TIR; quality v5
+(SAVI alto soma pontos). Cenas de `lista_imagens_Notaceites.txt` sempre saem.
+Cenas de `list_zero_cloud.txt` não passam pela máscara de nuvem e ganham
+`BONUS_ZERO_CLOUD = 3.0` no quality (o v5 vai até 2,1: sempre vencem); cena nas duas
+listas fica fora.
+
+**Etapas** (o usuário roda; todas interativas, com dry-run):
+
+| # | Script | O que faz | Saída |
+|---|---|---|---|
+| 1 | `build_mosaico_sazonal_seco.py` | qualityMosaic seco de A e B por célula da grid 5 × 5 | `ASTER_sazonal/ASTER_sazonal_<A\|B>_seco_quality_<LxCy>` |
+| 2 | `pontos_sazonal_seco_pareados.py` → etapa 1 | 2000 pontos/célula a 30 m onde A tem as 14 bandas | `points_sazonal_seco_A` |
+| 3 | idem → etapa 2 | mesmos pontos amostrados no B (`sampleRegions`) | `points_sazonal_seco_B` |
+| 4 | idem → baixar | CSV por tabela e junção pelo `pid` (sufixos `_A` / `_B`) | `src/Dados/ASTER_Samples_sazonal_seco/points_sazonal_seco_pareados.csv` |
+| 5 | `../modeling/estimar_swir_rf_v2.py`, grupo `sazonal_seco` | RF (VNIR+TIR → SWIR) treinado nos pontos A, aplicado ao mosaico B | `ASTER_MOSAIC_v2/ASTER_MOSAIC_sazonal_seco_2009_2020_<LxCy>` |
+| 6 | `build_mosaico_final_v2.py`, fonte `sazonal` | origem 1 = A (SWIR medido), origem 2 = B estimado só onde A não tem pixel | `aster-mosaico-final_sazonal/aster-mosaico-final-sazonal_<LxCy>` |
+
+**Saída dos mosaicos (etapa 1):** reflectância × 1000 (B01–B09), TIR em DN, banda
+`n_obs` (nº de cenas válidas no pixel), INT32, 15 m em EPSG:4326 com o
+`CRS_TRANSFORM` ancorado no canto NW (células encaixam pixel a pixel), pirâmide
+`mean`. Propriedades: `periodo`, `anos`, `meses`, `num_images`, `num_zero_cloud`,
+`bonus_zero_cloud`, `blacklist`, `swir`…
+
+**Normalização B → A (etapa 5):** o mosaico sazonal não tem banda `data` (cada
+pixel vem de uma cena diferente), então não há reta por cena. Opções, perguntadas
+na execução: `nenhuma` (padrão), `celula` (reta OLS por banda e célula nos pares;
+célula com < 200 pares usa a global; coeficientes em
+`src/modeling/models/sazonal_seco/normalizacao_ols_celula_coef.csv`; banda
+`normalizacao` = 3) ou `global`. Ainda não avaliado: como A e B agora são da mesma
+estação, espera-se um efeito da data da cena menor que no zero-cloud.
+
+**Conta e destino:** etapas 1–4 rodam com `caatinga05` inicializada no projeto
+`mapbiomas-brazil` (`CONTA` / `PROJETO` em `build_mosaico_sazonal_seco.py`);
+assets em `projects/mapbiomas-arida/mine/` (`DESTINO`). Etapas 5–6 usam a conta
+ativa / o rodízio de contas dos próprios scripts.
+
+**Pendências:** exportar A e B de todas as células e conferir a cobertura do A;
+índice de costura do mosaico produzido contra o v1 e o único; avaliar o SWIR
+estimado do B nos pares (com e sem normalização por célula); testar o mosaico
+final sazonal na modelagem de favorabilidade. Relatório:
+`docs/relatorio_mosaico_aster/` (seção "Mosaico sazonal seco").
+
+---
+
+## Etapas do pipeline original (JS, legado)
 
 ### 1. `select_black_list_save_mosaicSem.js` — Mosaico semestral por qualidade
 
@@ -119,6 +189,10 @@ Para cada mosaico semestral:
 |---|---|
 | Mosaicos semestrais | `projects/mapbiomas-arida/mosaic_aster/` |
 | Mosaico final multitemporal | `projects/mapbiomas-arida/MOSAICO_FINAL_ASTER_IRECE` |
+| Mosaicos sazonais secos A/B (por célula) | `projects/mapbiomas-arida/mine/ASTER_sazonal/` |
+| Pontos pareados sazonais | `projects/mapbiomas-arida/mine/points_sazonal_seco_A`, `..._B` |
+| Mosaico B com SWIR estimado | `projects/mapbiomas-arida/mine/ASTER_MOSAIC_v2/ASTER_MOSAIC_sazonal_seco_2009_2020_<LxCy>` |
+| Mosaico final sazonal | `projects/mapbiomas-arida/mine/aster-mosaico-final_sazonal/` |
 
 ---
 

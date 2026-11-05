@@ -1,6 +1,6 @@
 ---
 name: estimate-swir-gee
-description: Use when the user wants to estimate ASTER SWIR (B04-B09) in GEE — the current per-cell smileRandomForest scripts (estimar_swir_rf/_v2, with per-scene OLS normalization) or the legacy smileGradientTreeBoost path (grid search, apply to the final mosaic, export swir_estimated). Triggers on "estimate_swir_gee", "smileGradientTreeBoost", "grid search GEE", "swir_estimated", "aplicar modelo ao mosaico final", "estimar_swir_rf", "smileRandomForest", "normalização OLS por cena", "ASTER_MOSAIC_v2".
+description: Use when the user wants to estimate ASTER SWIR (B04-B09) in GEE — the current per-cell smileRandomForest scripts (estimar_swir_rf/_v2, with per-scene OLS normalization, and the sazonal_seco / sazonal_pareado groups) or the legacy smileGradientTreeBoost path (grid search, apply to the final mosaic, export swir_estimated). Triggers on "estimate_swir_gee", "smileGradientTreeBoost", "grid search GEE", "swir_estimated", "aplicar modelo ao mosaico final", "estimar_swir_rf", "smileRandomForest", "normalização OLS por cena", "ASTER_MOSAIC_v2".
 ---
 
 # Estimate SWIR (GEE-side)
@@ -33,6 +33,21 @@ O GBT abaixo é legado. O SWIR estimado em uso vem de
   `projects/mapbiomas-arida/mine/ASTER_MOSAIC_v2/ASTER_MOSAIC_<grupo>_2009_2020_<LxCy>`
   com banda `normalizacao` (0/1/2);
 - `rf.estimar(...)` é reutilizado por `build_mosaico_unico.py` (etapa 2).
+
+Grupos do mosaico sazonal seco (skill `mosaico-sazonal-seco`), 2026-10-29:
+- `sazonal_seco`: treina nos pontos do A (`points_sazonal_seco_A`) e aplica ao
+  `ASTER_sazonal_B_seco_quality_<LxCy>`; normalização `nenhuma`/`celula`/`global`
+  (retas OLS dos pares, `models/sazonal_seco/normalizacao_ols_celula_coef.csv`) —
+  sem `cena`, o mosaico não tem banda de data (o mapa de cenas `cena_t` da
+  harmonização poderia dar isso);
+- `sazonal_pareado`: treina direto B → SWIR do A (join `pid` de
+  `points_sazonal_seco_A` × `_B`), normalização `nenhuma`;
+- hiperparâmetros por grupo (`ARQ_PARAMS_GRUPO`): `models/sazonal_seco/best_params.json`
+  e `best_params_pareado.json` (notebook `train_swir_models_sazonal.ipynb`);
+- menu tem a opção comparar (os dois grupos); saída
+  `ASTER_MOSAIC_<grupo>_2009_2020_<LxCy>`;
+- ainda lê `ASTER_sazonal` original; se a harmonização for adotada, trocar
+  `PASTA_SAZONAL` e os pontos juntos.
 
 Estado (2026-10-17): `ASTER_MOSAIC` (v1) com 50 assets (zero_cloud +
 semestral_v4, 25 células cada); `ASTER_MOSAIC_v2` não existe (v2 não

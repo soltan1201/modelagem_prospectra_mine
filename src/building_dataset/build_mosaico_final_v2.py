@@ -7,6 +7,30 @@ com as entradas da estação seca (jul–out):
   4  ASTER_MOSAIC_v2   semestral_v5 2009–2020 (estimar_swir_rf_v2.py)
 Saída: projects/mapbiomas-arida/mine/aster-mosaico-final_v2 (sem superconta).
 
+FONTE 'sazonal' (perguntada no início): só os mosaicos sazonais secos, sem
+zero-cloud nem semestrais por cima (menos colcha de retalhos; o sazonal A já
+inclui as cenas zero-cloud de jun–out com peso alto):
+  1  ASTER_sazonal     ASTER_sazonal_A_seco_quality_<LxCy> 2000–2008, SWIR medido
+                       (build_mosaico_sazonal_seco.py)
+  2  ASTER_MOSAIC_v2   ASTER_MOSAIC_sazonal_seco_2009_2020_<LxCy>, SWIR estimado
+                       (estimar_swir_rf_v2.py, grupo sazonal_seco)
+Saída: projects/mapbiomas-arida/mine/aster-mosaico-final_sazonal, nome
+aster-mosaico-final-sazonal_<LxCy>.
+
+FONTE 'sazonal_hm': os mesmos dois mosaicos, harmonizados contra o Landsat
+(harmonizar_sazonal_landsat.py; fonte = pontos_sazonal_seco_pareados.FONTE, padrão
+'hm_razao'). Como A e B ficam na mesma escala (reflectância de superfície × 1000),
+dá para comparar o pixel dos dois períodos e trocar o A quando ele parece nuvem:
+  origem 1  A (SWIR medido) — regra geral, o A fica por cima
+  origem 2  B (SWIR estimado) onde o A não tem pixel
+  origem 3  B (SWIR estimado) no lugar do A com nuvem: A mais claro que o B no B01
+            (> DIF_NUVEM_B01) E mais frio no B13 (> DIF_NUVEM_B13). Nuvem é clara e
+            fria; solo claro ou mina é claro mas não frio (fica o A), e sombra é
+            escura (não ganha por ser escura).
+Entrada B: ASTER_MOSAIC_v2/ASTER_MOSAIC_sazonal_seco<SUFIXO>_2009_2020_<LxCy>
+(estimar_swir_rf_v2.py com a mesma fonte). Saída:
+mine/aster-mosaico-final_sazonal<SUFIXO>/aster-mosaico-final-sazonal<SUFIXO>_<LxCy>.
+
 Texto original (v1):
 Mosaico final ASTER para inferência de materiais: junta, por célula da grid
 5 × 5, os quatro mosaicos disponíveis numa só imagem, com prioridade por pixel:
@@ -47,7 +71,9 @@ from datetime import datetime
 
 import ee
 
+import build_mosaico_sazonal_seco as sz
 import build_mosaicos_semestrais_v2 as b
+import pontos_sazonal_seco_pareados as ps
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +93,19 @@ VERSAO    = 'final_v2_seco'
 CONTAS = ['caatinga01', 'caatinga02', 'caatinga03', 'caatinga04', 'caatinga05',
           'solkan1201', 'solkanGeodatin', 'solkanCengine']
 TASKS_POR_CONTA = 2          # rodízio: troca de conta a cada N tasks
-
+# Projeto do GEE onde as tasks rodam. Com um nome: usa só a conta ativa
+# (~/.config/earthengine/current_user.txt), sem perguntar contas nem rodízio.
+# None: projeto de cada conta e menu de contas. A lista de tasks ativas é por
+# projeto: tasks enviadas em outro projeto não aparecem e seriam reenviadas.
+PROJETO_EE = 'mapbiomas-brazil'
+# Só com PROJETO_EE: células mandadas para outras contas, no projeto PRÓPRIO de cada
+# uma (não no PROJETO_EE), para salvar em paralelo. Conta sem leitura nas fontes
+# sai e as células dela voltam para a conta ativa. {} desliga.
+CELULAS_POR_CONTA = {
+    'caatinga05': ['L2C5', 'L5C1', 'L5C2'],
+    'caatinga02': ['L5C3', 'L5C4', 'L5C5'],
+}
+# PROJETO_EE = 'mapbiomas-caatinga-cloud04'
 PASTA_ZERO_CLOUD = 'projects/mapbiomas-arida/mine/ASTER_0cloud_v2'
 PASTA_SWIR_RF    = 'projects/mapbiomas-arida/mine/ASTER_MOSAIC_v2'
 # semestrais v4: as duas coleções (superconta e rodízio caatinga) — nomes iguais
@@ -83,6 +121,45 @@ CAMADAS = {   # origem → descrição
     4: 'semestral_v5_2009_2020 seco (SWIR estimado RF)',
 }
 SWIR_ESTIMADO = {2, 4}
+PASTAS_LEITURA = (PASTA_ZERO_CLOUD, PASTA_SWIR_RF)   # a conta precisa ler (e existentes vêm daqui)
+
+# Fonte 'sazonal': substitui os parâmetros acima (usar_fonte)
+PASTA_SAZONAL = sz.DESTINO_FINAL
+B_SWIR_RF     = 'ASTER_MOSAIC_sazonal_seco_2009_2020_'      # + <LxCy>, em PASTA_SWIR_RF
+# Fonte 'sazonal_hm': troca do A pelo B onde o A parece nuvem (montar_nuvem)
+DIF_NUVEM_B01 = 50     # A mais claro que o B no B01, reflectância de superfície × 1000 (0,05)
+DIF_NUVEM_B13 = 60     # E mais frio no B13, DN (DN13 ≈ 1070 + 22·°C → ~3 °C)
+FONTES = {
+    'v2': {},
+    'sazonal': {
+        'DESTINOS': dict.fromkeys(DESTINOS, 'projects/mapbiomas-arida/mine/aster-mosaico-final_sazonal'),
+        'PREFIXO': 'aster-mosaico-final-sazonal_',
+        'VERSAO': 'final_sazonal_seco',
+        'CAMADAS': {1: 'sazonal_A seco quality 2000_2008 (SWIR medido)',
+                    2: 'sazonal_B seco quality 2009_2020 (SWIR estimado RF)'},
+        'SWIR_ESTIMADO': {2},
+        'PASTAS_LEITURA': (PASTA_SAZONAL, PASTA_SWIR_RF),
+    },
+    'sazonal_hm': {
+        'DESTINOS': dict.fromkeys(DESTINOS, f'projects/mapbiomas-arida/mine/aster-mosaico-final_sazonal{ps.SUFIXO}'),
+        'PREFIXO': f'aster-mosaico-final-sazonal{ps.SUFIXO}_',
+        'VERSAO': f'final_sazonal_seco{ps.SUFIXO}',
+        'CAMADAS': {1: f'sazonal_A {ps.FONTE} 2000_2008 (SWIR medido)',
+                    2: f'sazonal_B {ps.FONTE} 2009_2020 (SWIR estimado RF; onde falta A ou A com nuvem)'},
+        'SWIR_ESTIMADO': {2, 3},
+        'PASTA_SAZONAL': ps.COL_FONTE,
+        'B_SWIR_RF': f'ASTER_MOSAIC_sazonal_seco{ps.SUFIXO}_2009_2020_',
+        'PASTAS_LEITURA': (ps.COL_FONTE, PASTA_SWIR_RF),
+    },
+}
+FONTE = 'v2'
+
+
+def usar_fonte(nome: str) -> None:
+    """Troca destino, prefixo, versão e camadas pelos da fonte escolhida."""
+    global FONTE
+    FONTE = nome
+    globals().update(FONTES[nome])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -134,6 +211,13 @@ def camadas(cel: dict, v4: ee.ImageCollection, existentes: set[str]) -> dict[int
     return out
 
 
+def camadas_sazonal(cel: dict, existentes: set[str]) -> dict[int, tuple]:
+    """origem → (imagem, asset) dos mosaicos sazonais secos que existem para a célula."""
+    a1 = f'{PASTA_SAZONAL}/{sz.nome_mosaico("A", cel["nome"])}'
+    a2 = f'{PASTA_SWIR_RF}/{B_SWIR_RF}{cel["nome"]}'
+    return {o: (ee.Image(a), a) for o, a in ((1, a1), (2, a2)) if a in existentes}
+
+
 def montar(cel: dict, cam: dict[int, tuple]):
     """Empilha da menor para a maior prioridade: mosaic() deixa a última por cima."""
     imgs = []
@@ -148,6 +232,30 @@ def montar(cel: dict, cam: dict[int, tuple]):
                          final.select(['origem', 'swir_estimado']).toUint8()])
 
 
+def montar_nuvem(cel: dict, cam: dict[int, tuple]):
+    """A por cima (origem 1); B onde falta A (2) ou onde o A parece nuvem frente ao B (3)."""
+    if not (1 in cam and 2 in cam):
+        return montar(cel, cam)
+    a, bb = (valido(cam[o][0]).select(BANDAS).round().toInt32() for o in (1, 2))
+    # só onde os dois têm pixel; no resto não há troca
+    nuvem_a = (a.select('B01').subtract(bb.select('B01')).gt(DIF_NUVEM_B01)
+                .And(bb.select('B13').subtract(a.select('B13')).gt(DIF_NUVEM_B13))
+                .unmask(0))
+
+    def camada(img, origem):
+        return (img.addBands([ee.Image.constant(origem).toUint8().rename('origem'),
+                              # SWIR do B (estimado) nas origens 2 e 3; SWIR_ESTIMADO {2, 4} é do v1
+                              ee.Image.constant(int(origem in (2, 3))).toUint8()
+                                .rename('swir_estimado')])
+                   .updateMask(img.select('B01').mask()))
+    # mosaic(): a última fica por cima
+    final = ee.ImageCollection([camada(bb, 2),
+                                camada(bb.updateMask(nuvem_a), 3),
+                                camada(a.updateMask(nuvem_a.Not()), 1)]).mosaic().clip(cel['geom'])
+    return ee.Image.cat([final.select(BANDAS).toInt32(),
+                         final.select(['origem', 'swir_estimado']).toUint8()])
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CONTAS
 # ═══════════════════════════════════════════════════════════════════════════
@@ -157,9 +265,20 @@ def destino_da_conta(conta: str) -> str:
 
 def ativar(conta: str) -> None:
     if b.ARQ_CONTA_ATUAL.read_text().strip() != conta:
-        b.usar_conta(conta)
+        b.switch_user(conta)
+    if PROJETO_EE and conta not in CELULAS_POR_CONTA:
+        ee.Initialize(project=PROJETO_EE)
     else:
         ee.Initialize(project=b.get_project_from_account(conta))
+
+
+def conta_da_celula(nome: str, contas: list[str], disparadas: int) -> str:
+    """Com PROJETO_EE: conta de CELULAS_POR_CONTA (se ela ficou na lista) ou a ativa.
+    Sem PROJETO_EE: rodízio de TASKS_POR_CONTA."""
+    if PROJETO_EE:
+        return next((c for c, cels in CELULAS_POR_CONTA.items() if nome in cels and c in contas),
+                    contas[0])
+    return contas[(disparadas // TASKS_POR_CONTA) % len(contas)]
 
 
 def perguntar_contas() -> list[str]:
@@ -194,7 +313,7 @@ def estado_geral(contas: list[str]) -> tuple[set[str], set[str]]:
             raise SystemExit(f'{conta}: não foi possível inicializar o EE ({str(e)[:120]})')
         # a task roda com as permissões da conta: sem ler as fontes, ela falharia
         try:
-            for pasta in (PASTA_ZERO_CLOUD, PASTA_SWIR_RF):
+            for pasta in PASTAS_LEITURA:
                 ee.data.getAsset(pasta)
         except ee.EEException:
             log.warning(f'{conta}: sem leitura em {pasta} — conta fora do rodízio')
@@ -221,16 +340,29 @@ def estado_geral(contas: list[str]) -> tuple[set[str], set[str]]:
 
 # ═══════════════════════════════════════════════════════════════════════════
 def main():
-    contas = perguntar_contas()
+    usar_fonte(b.perguntar_opcao('Fonte do mosaico final:', [
+        ('v2 — zero-cloud v2 + semestrais v5 (4 camadas)', 'v2'),
+        ('sazonal — sazonal seco A (SWIR medido) + B (SWIR estimado)', 'sazonal'),
+        (f'sazonal_hm — A e B harmonizados ({ps.FONTE}); B no lugar do A com nuvem', 'sazonal_hm'),
+    ]))
+    if PROJETO_EE:
+        ativa = b.ARQ_CONTA_ATUAL.read_text().strip()
+        contas = [ativa] + [c for c in CELULAS_POR_CONTA if c != ativa]
+        print(f'Conta GEE: {ativa} (projeto {PROJETO_EE})')
+        for c, cels in CELULAS_POR_CONTA.items():
+            print(f'  {c} ({b.get_project_from_account(c)}): {", ".join(cels)}')
+    else:
+        contas = perguntar_contas()
     salvos, ativas = estado_geral(contas)
     grid = b.ler_grid()
 
     existentes = set()
-    for pasta in (PASTA_ZERO_CLOUD, PASTA_SWIR_RF):
+    for pasta in PASTAS_LEITURA:
         existentes |= {f'{pasta}/{n}' for n in b.listar_destino(pasta, criar=False)}
-    v4 = ee.ImageCollection([ee.Image(i) for i in ids_v4()])
+    v4 = ee.ImageCollection([ee.Image(i) for i in ids_v4()]) if FONTE == 'v2' else None
 
-    print('\n══════ Mosaico final ASTER (prioridade 1 > 2 > 3 > 4) ══════')
+    print(f'\n══════ Mosaico final ASTER — fonte {FONTE} '
+          f'(prioridade {" > ".join(map(str, CAMADAS))}) ══════')
     for c in contas:
         print(f'  conta {c} → {destino_da_conta(c)}')
     for o, d in CAMADAS.items():
@@ -247,8 +379,12 @@ def main():
     if not pendentes or not b.perguntar_sim_nao('Continuar?', padrao=True):
         raise SystemExit('Nada a fazer.')
 
-    cams = {c: camadas({'id': c, **grid[c]}, v4, existentes) for c in pendentes}
-    n_sem = ee.List([cams[c][3][2] for c in pendentes]).getInfo()
+    if FONTE == 'v2':
+        cams = {c: camadas({'id': c, **grid[c]}, v4, existentes) for c in pendentes}
+        n_sem = ee.List([cams[c][3][2] for c in pendentes]).getInfo()
+    else:   # sazonal / sazonal_hm: sem semestrais (coluna semestrais_2000_2008 fica 0)
+        cams = {c: camadas_sazonal(grid[c], existentes) for c in pendentes}
+        n_sem = [0] * len(pendentes)
 
     registro = []
     disparadas, conta_ativa = 0, contas[0]
@@ -260,7 +396,7 @@ def main():
         linha = {'celula_id': c, 'celula_nome': cel['nome'], 'camadas': ','.join(map(str, usadas)),
                  'faltam': ','.join(map(str, faltam)), 'semestrais_2000_2008': n3}
         log.info(f'{nomes[c]}: camadas {usadas}' + (f' (faltam {faltam})' if faltam else '')
-                 + f'; {n3} semestrais v4 2000–2008')
+                 + (f'; {n3} semestrais v4 2000–2008' if FONTE == 'v2' else ''))
         if not cam:
             registro.append({**linha, 'status': 'sem_camadas'})
             continue
@@ -268,17 +404,18 @@ def main():
             registro.append({**linha, 'status': 'dry_run'})
             continue
 
-        final = montar(cel, cam).set({
+        final = (montar_nuvem if FONTE == 'sazonal_hm' else montar)(cel, cam).set({
             'celula_id': c, 'celula_nome': cel['nome'], 'camadas': ','.join(map(str, usadas)),
             'prioridade': ' > '.join(f'{o}={CAMADAS[o]}' for o in CAMADAS),
-            'origem_1': cam[1][1] if 1 in cam else '', 'origem_2': cam[2][1] if 2 in cam else '',
-            'origem_3': cam[3][1] if 3 in cam else '', 'origem_4': cam[4][1] if 4 in cam else '',
+            **{f'origem_{o}': cam[o][1] if o in cam else '' for o in CAMADAS},
             'grid_asset': b.GRID_ASSET, 'DATA_TYPE': 'INT32',
             'SCALE_FACTORS': {**dict.fromkeys(BANDAS[:9], b.ESCALA_TOA), **dict.fromkeys(BANDAS[9:], 1),
                               'origem': 1, 'swir_estimado': 1},
             'versao': VERSAO,
+            **({'regra_nuvem': f'B01_A - B01_B > {DIF_NUVEM_B01} e B13_B - B13_A > {DIF_NUVEM_B13}',
+                'origem_3': 'B no lugar do A com nuvem'} if FONTE == 'sazonal_hm' else {}),
         })
-        conta = contas[(disparadas // TASKS_POR_CONTA) % len(contas)]
+        conta = conta_da_celula(cel['nome'], contas, disparadas)
         if conta != conta_ativa:
             ativar(conta)
             conta_ativa = conta
@@ -298,6 +435,8 @@ def main():
         registro.append({**linha, 'conta': conta, 'asset': f'{destino}/{nomes[c]}',
                          'status': 'exportando', 'task_id': task.id})
 
+    if conta_ativa != contas[0]:      # deixa a conta ativa de antes (outros scripts usam ela)
+        ativar(contas[0])
     arq = b.PASTA / f'registro_mosaico_final_{datetime.now():%Y%m%d_%H%M}.csv'
     with open(arq, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=['celula_id', 'celula_nome', 'camadas', 'faltam',

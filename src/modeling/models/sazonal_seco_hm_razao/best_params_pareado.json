@@ -1,0 +1,94 @@
+{
+  "rf": {
+    "B04": {
+      "max_features": 3,
+      "max_leaf_nodes": 4096,
+      "max_samples": 0.8776807051588262,
+      "min_samples_leaf": 6,
+      "n_estimators": 141,
+      "cv_rmse": 0.04762626985884284,
+      "gee": {
+        "numberOfTrees": 141,
+        "variablesPerSplit": 3,
+        "minLeafPopulation": 6,
+        "bagFraction": 0.878,
+        "maxNodes": 4096
+      }
+    },
+    "B05": {
+      "max_features": 3,
+      "max_leaf_nodes": 4096,
+      "max_samples": 0.8776807051588262,
+      "min_samples_leaf": 6,
+      "n_estimators": 141,
+      "cv_rmse": 0.035124052521299756,
+      "gee": {
+        "numberOfTrees": 141,
+        "variablesPerSplit": 3,
+        "minLeafPopulation": 6,
+        "bagFraction": 0.878,
+        "maxNodes": 4096
+      }
+    },
+    "B06": {
+      "max_features": 3,
+      "max_leaf_nodes": null,
+      "max_samples": 0.6154469128110744,
+      "min_samples_leaf": 7,
+      "n_estimators": 143,
+      "cv_rmse": 0.03612009401336685,
+      "gee": {
+        "numberOfTrees": 143,
+        "variablesPerSplit": 3,
+        "minLeafPopulation": 7,
+        "bagFraction": 0.615,
+        "maxNodes": null
+      }
+    },
+    "B07": {
+      "max_features": 3,
+      "max_leaf_nodes": 4096,
+      "max_samples": 0.8776807051588262,
+      "min_samples_leaf": 6,
+      "n_estimators": 141,
+      "cv_rmse": 0.036358067039080975,
+      "gee": {
+        "numberOfTrees": 141,
+        "variablesPerSplit": 3,
+        "minLeafPopulation": 6,
+        "bagFraction": 0.878,
+        "maxNodes": 4096
+      }
+    },
+    "B08": {
+      "max_features": 3,
+      "max_leaf_nodes": 4096,
+      "max_samples": 0.8776807051588262,
+      "min_samples_leaf": 6,
+      "n_estimators": 141,
+      "cv_rmse": 0.028509266627173457,
+      "gee": {
+        "numberOfTrees": 141,
+        "variablesPerSplit": 3,
+        "minLeafPopulation": 6,
+        "bagFraction": 0.878,
+        "maxNodes": 4096
+      }
+    },
+    "B09": {
+      "max_features": 3,
+      "max_leaf_nodes": 4096,
+      "max_samples": 0.8776807051588262,
+      "min_samples_leaf": 6,
+      "n_estimators": 141,
+      "cv_rmse": 0.01851343467642692,
+      "gee": {
+        "numberOfTrees": 141,
+        "variablesPerSplit": 3,
+        "minLeafPopulation": 6,
+        "bagFraction": 0.878,
+        "maxNodes": 4096
+      }
+    }
+  }
+}

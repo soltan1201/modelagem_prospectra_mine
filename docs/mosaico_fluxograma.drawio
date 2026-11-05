@@ -1,0 +1,92 @@
+<mxfile host="Electron">
+  <diagram name="Page-1" id="IshMupXs6Z7PiNlDQ4AN">
+    <mxGraphModel dx="1414" dy="884" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="i3GAgni3mTGJukVjkZwe-27" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;" target="i3GAgni3mTGJukVjkZwe-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-1" parent="1" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.layered_rect;dx=10;outlineConnect=0;boundedLbl=1;fontFamily=Times New Roman;fontSize=14;fillColor=#FFBE93;" value="ASTER L1T &lt;br&gt;(2000-2020)" vertex="1">
+          <mxGeometry height="90" width="120" x="130" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-5" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-6" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;defaultLabelBackgroundColor=page;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="320" y="280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;fontFamily=Times New Roman;fontSize=14;fillColor=#F4EF8F;" value="nuvem &amp;lt; 60%&lt;br&gt;blacklist (id_asset)&lt;br&gt;meses jun-out&lt;br&gt;limite (Irecê)" vertex="1">
+          <mxGeometry height="80" width="120" x="130" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-14" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=14;fillColor=#FFBE93;" value="Período &lt;b&gt;A&lt;/b&gt; seco&lt;br&gt;(2000-03 a 2008-03)&lt;br&gt;VNIR + SWIR + TIR&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="150" x="330" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-13" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=14;fillColor=#FFBE93;" value="Período &lt;b&gt;B &lt;/b&gt;seco&lt;br&gt;(2009-03 a 2020-03)&lt;br&gt;VNIR + TIR (sem SWIR)&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="150" x="330" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#9CD138;" value="Período B&lt;br&gt;(2009-03 a 2020-03)&lt;br&gt;VNIR + TIR (sem SWIR)&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="150" x="320" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-10" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-8" parent="1" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.layered_rect;dx=10;outlineConnect=0;boundedLbl=1;fontFamily=Times New Roman;fontSize=14;fillColor=#9CD138;" value="LANDSAT&amp;nbsp;&amp;nbsp;&lt;br&gt;T1_L2_32DAY&lt;br&gt;(2000-2020)" vertex="1">
+          <mxGeometry height="90" width="120" x="130" y="325" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-12" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=14;fillColor=#9CD138;" value="Período A seco&lt;br&gt;Período B seco&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="150" x="330" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-21" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-16">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;fontFamily=Times New Roman;fontSize=14;fillColor=#F4EF8F;" value="&lt;i&gt;Histogram Matching&amp;nbsp;&lt;/i&gt;&lt;br&gt;por período &lt;b&gt;A|B&amp;nbsp;&lt;/b&gt;&lt;br&gt;pixels estaveis EVI2&lt;br&gt;VNIR + B04 + B13&lt;br&gt;relação S (SWIR e TIR)" vertex="1">
+          <mxGeometry height="90" width="150" x="560" y="325" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-20" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-19">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=14;fillColor=#FFBE93;" value="Período &lt;b&gt;A&lt;/b&gt;&lt;br&gt;(harmonizado)&lt;br&gt;VNIR + SWIR + TIR&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="150" x="560" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-18" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="770" y="240" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-22" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;defaultLabelBackgroundColor=page;dashed=1;dashPattern=8 4 1 4;strokeWidth=2;" target="i3GAgni3mTGJukVjkZwe-15" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-16" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=14;fillColor=#FFBE93;" value="Período &lt;b&gt;B&lt;/b&gt;&lt;br&gt;(harmonizado)&lt;br&gt;VNIR + TIR (sem SWIR)&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="150" x="560" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-25" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-24">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;fontFamily=Times New Roman;fontSize=14;fillColor=#F4EF8F;" value="&lt;i&gt;SWIR estimado&amp;nbsp;&lt;br&gt;(Random Forest)&lt;/i&gt;" vertex="1">
+          <mxGeometry height="80" width="120" x="775" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-23" edge="1" parent="1" source="i3GAgni3mTGJukVjkZwe-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;strokeWidth=2;dashed=1;dashPattern=8 4 1 4;" target="i3GAgni3mTGJukVjkZwe-17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;fontFamily=Times New Roman;fontSize=14;fillColor=#F4EF8F;" value="&lt;i&gt;Coleta de pontos&lt;br&gt;inferencia do SWIR&amp;nbsp;&lt;/i&gt;" vertex="1">
+          <mxGeometry height="80" width="120" x="775" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="i3GAgni3mTGJukVjkZwe-24" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=14;fillColor=#FFBE93;" value="Mosaico ASTER &lt;br&gt;(&lt;b&gt;A+B&lt;/b&gt; harmonizado)&lt;br&gt;14 bandas&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="120" x="775" y="335" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

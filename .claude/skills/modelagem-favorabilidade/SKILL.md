@@ -13,13 +13,21 @@ consultas GEE só leitura (`listAssets`, `size`) para conferir estado.
 
 ## Fluxo
 
-| # | Script (`src/modeling/` salvo indicação) | Saída em `projects/mapbiomas-arida/mine/` |
+Região toda (bandas + índices do mosaico) em `src/modeling/regiao_completa/`.
+Área reduzida com ASTER + geofísica/geologia CPRM (`amostras_AR.py`,
+`selecao_variaveis_AR.ipynb`, `exportar_favorabilidade_AR.py`) em
+`src/modeling/area_reduzida/`; importa `models_ML_fosfato` e
+`exportar_favorabilidade_ml` da pasta irmã. Saídas locais das duas em
+`src/modeling/models/` (compartilhada).
+
+| # | Script (`src/modeling/regiao_completa/` salvo indicação) | Saída em `projects/mapbiomas-arida/mine/` |
 |---|---|---|
 | 1 | `preparar_pontos_referencia.py` | `pontos_referencia` + `src/Dados/referencias/pontos_referencia.csv` |
-| 2 | `maxent_fosfato.py` etapa 1 (mosaico: único, v1 ou os dois) | `maxent_amostras_<mosaico>_bandas_indices` |
+| 2 | `models_ML_fosfato.py` etapa 1 (mosaico: único, v1 ou os dois) | `maxent_amostras_<mosaico>_bandas_indices` |
 | 3 | `baixar_amostras_maxent.py` (ou export Drive em `export_points_mosaic.js`) | CSVs em `src/Dados/maxent/` |
 | 4 | `avaliar_maxent.ipynb` | métricas, figuras `models/figuras_avaliacao_maxent/c<célula>_*.png`, `models/ranking_features_shap_*.csv` |
-| 5 | `exportar_favorabilidade_ml.py` | `favorabilidade_ml/<modelo>_<alvo>_<mosaico>_<LxCy>` |
+| 4b | `selecao_variaveis_RC.ipynb` (folds = células da grid 5 × 5) | `models/variaveis_RC_<sufixo>.json`, `models/cluster_fundo_RC_<sufixo>.json`, `models/avaliacao_pontos_RC_*.csv` |
+| 5 | `exportar_favorabilidade_ml.py` (menu Conjunto: os do JSON ou `fixas`) | `favorabilidade_ml/<modelo>_<alvo>_<mosaico>[_<conjunto>[_fcl]]_<LxCy>` |
 | 6 | `src/show_mosaics/visualizar_favorabilidade_ml.js` | histogramas, curva área × limiar |
 | — | `maxent_alvos.js` | prévia Maxent no Code Editor |
 | 7 | `src/model_DL/` (skill `cnn-favorabilidade`) | CNN com pseudo-rótulos de `favorabilidade_ml` |

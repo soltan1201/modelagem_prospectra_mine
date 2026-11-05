@@ -24,7 +24,8 @@ var GRID = ee.FeatureCollection(MINE + 'grid_irece_5x5');
 var PONTOS = ee.FeatureCollection(MINE + 'pontos_referencia');
 var MOSAICOS = {
   'aster-mosaico-final': MINE + 'aster-mosaico-final',
-  'ASTER_mosaico_unico_final': MINE + 'ASTER_mosaico_unico_final'
+  'ASTER_mosaico_unico_final': MINE + 'ASTER_mosaico_unico_final',
+  'aster-mosaico-final_sazonal_hm_razao': MINE + 'aster-mosaico-final_sazonal_hm_razao'
 };
 var MODELOS = ['RF', 'GTB'];
 var COR = {RF: '#222222', GTB: '#17becf'};
@@ -61,7 +62,7 @@ painel.add(ui.Label('p = probability / 10000. Treino com fundo 3 × presença: p
                     'não é a chance real de ocorrência.', {fontSize: '11px', color: '666666'}));
 
 var selAlvo = ui.Select({items: ['fosfato'], value: 'fosfato', style: {stretch: 'horizontal'}});
-var selMos = ui.Select({items: Object.keys(MOSAICOS), value: 'aster-mosaico-final', style: {stretch: 'horizontal'}});
+var selMos = ui.Select({items: Object.keys(MOSAICOS), value: 'aster-mosaico-final_sazonal_hm_razao', style: {stretch: 'horizontal'}});
 painel.add(ui.Panel([ui.Label('Alvo', {fontSize: '12px'}), selAlvo], ui.Panel.Layout.flow('horizontal')));
 painel.add(ui.Panel([ui.Label('Mosaico', {fontSize: '12px'}), selMos], ui.Panel.Layout.flow('horizontal')));
 var lblInfo = ui.Label('', {fontSize: '11px', whiteSpace: 'pre-wrap'});
@@ -71,19 +72,38 @@ painel.add(lblInfo);
 ee.Dictionary({
   alvos: COL.aggregate_array('alvo').distinct(),
   mosaicos: COL.aggregate_array('mosaico').distinct(),
-  n: COL.aggregate_histogram('modelo'),
-  params: COL.first().toDictionary(['n_presenca', 'n_fundo', 'features'])
 }).evaluate(function (r) {
   selAlvo.items().reset(r.alvos);
   selMos.items().reset(r.mosaicos);
   if (r.alvos.indexOf(selAlvo.getValue()) < 0) { selAlvo.setValue(r.alvos[0], false); }
   if (r.mosaicos.indexOf(selMos.getValue()) < 0) { selMos.setValue(r.mosaicos[0], false); }
-  lblInfo.setValue('Células na coleção: ' + JSON.stringify(r.n) + '\nTreino: presença ' + r.params.n_presenca +
-                   ', fundo ' + r.params.n_fundo + ' · ' + r.params.features.split(',').length + ' variáveis');
   desenhar();
 });
 
-var sldLimiar = ui.Slider({min: 0, max: 1, step: 0.01, value: 0.5, style: {stretch: 'horizontal'}});
+// resumo do treino do alvo × mosaico escolhido (imagens antigas podem não ter
+// 'features', 'conjunto' ou 'fundo_modo' — mostra '?' em vez de quebrar)
+function atualizarInfo(alvo, mos) {
+  var sub = COL.filter(ee.Filter.eq('alvo', alvo)).filter(ee.Filter.eq('mosaico', mos));
+  lblInfo.setValue('carregando…');
+  ee.Dictionary({
+    n: sub.aggregate_histogram('modelo'),
+    conjuntos: sub.aggregate_array('conjunto').distinct(),
+    params: ee.Algorithms.If(sub.size().gt(0),
+      sub.first().toDictionary().select(['n_presenca', 'n_fundo', 'features', 'conjunto', 'fundo_modo'], true),
+      ee.Dictionary({}))
+  }).evaluate(function (r, err) {
+    if (err) { lblInfo.setValue('Erro: ' + err); return; }
+    var p = r.params || {};
+    var nVars = p.features ? p.features.split(',').length : '?';
+    lblInfo.setValue('Células na coleção: ' + JSON.stringify(r.n) +
+                     '\nConjuntos: ' + (r.conjuntos.length ? r.conjuntos.join(', ') : '?') +
+                     (r.conjuntos.length > 1 ? '  ⚠ misturados na mesma camada' : '') +
+                     '\nTreino: presença ' + (p.n_presenca || '?') + ', fundo ' + (p.n_fundo || '?') +
+                     ' (' + (p.fundo_modo || '?') + ') · ' + nVars + ' variáveis');
+  });
+}
+
+var sldLimiar = ui.Slider({min: 0, max: 1, step: 0.01, value: 0.92, style: {stretch: 'horizontal'}});
 painel.add(ui.Label('Limiar para "área favorável"', {fontSize: '12px', fontWeight: 'bold', margin: '8px 0 0 8px'}));
 painel.add(sldLimiar);
 var lblArea = ui.Label('', {fontSize: '11px', whiteSpace: 'pre-wrap'});
@@ -101,13 +121,16 @@ painel.add(saida);
 // ----------------------------------------------------------------------------
 var atual = null;
 var camLimiar = null;
+var camAmbos = null;
 
 function desenhar() {
   var alvo = selAlvo.getValue(), mos = selMos.getValue();
   var img = pilha(alvo, mos);
   atual = {alvo: alvo, mosaico: mos, img: img};
+  atualizarInfo(alvo, mos);
   Map.layers().reset();
   camLimiar = null;
+  camAmbos = null;
   saida.clear();
   Map.addLayer(ee.Image.constant(1), {min:0, max: 1}, 'base');
   // só o contorno externo da grid (células dissolvidas), preto, sem preenchimento
@@ -131,11 +154,16 @@ function atualizarLimiar() {
   if (!atual) { return; }
   var t = sldLimiar.getValue();
   if (camLimiar) { Map.layers().remove(camLimiar); }
+  if (camAmbos) { Map.layers().remove(camAmbos); }
   var acima = atual.img.gte(t);
   var conc = acima.select('RF').multiply(1).add(acima.select('GTB').multiply(2)).selfMask();   // 1 só RF, 2 só GTB, 3 os dois
   camLimiar = ui.Map.Layer(conc, {min: 1, max: 3, palette: COR_LIMIAR},
                            'p ≥ ' + t + ' (cinza só RF, ciano só GTB, magenta os dois)', true);
   Map.layers().add(camLimiar);
+  // só a concordância: RF e GTB ≥ limiar ao mesmo tempo, em magenta
+  camAmbos = ui.Map.Layer(acima.select('RF').and(acima.select('GTB')).selfMask(), {palette: 'ff00ff'},
+                          'só magenta: RF e GTB ≥ ' + t, false);
+  Map.layers().add(camAmbos);
   lblLegLimiar.setValue('p ≥ ' + t);
   lblArea.setValue('calculando a área acima de ' + t + '…');
   acima.addBands(acima.select('RF').and(acima.select('GTB')).rename('ambos'))

@@ -65,7 +65,7 @@ cópias com os mesmos nomes (`ferric_iron_2_1`, `carbonate_8_6`, `sultan_r`,
 | Arquivo | Função / lista |
 |---|---|
 | `src/modeling/maxent_fosfato.py` | `INDICES`, `emissividade_tir`, `calcular_features` (fonte das amostras) |
-| `src/modeling/maxent_alvos.js` | `INDICES`, `fosforitoTIR` |
+| `src/modeling/regiao_completa/maxent_alvos.js` | `INDICES`, `fosforitoTIR` |
 | `src/features_process/exportar_mosaicos_indices.{js,py}` e `_colab.ipynb` | `indicesMinerais`/`indices_minerais`, `indicesGeo`, `fosforitoTIR` |
 | `src/show_mosaics/visualizar_mosaico_final_acervo.js`, `visualizar_comparar_mosaicos_finais.js` | `INDICES` com faixas de cor |
 

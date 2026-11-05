@@ -43,7 +43,7 @@ Visualizador combinado: `src/show_mosaics/visualizar_mosaico_final_acervo.js`.
 
 `ocorrencias_fosfato` e `recursos_minerais` alimentam
 `projects/mapbiomas-arida/mine/pontos_referencia` (fosfato + carbonato,
-mvt, ouro, manganês) via `src/modeling/preparar_pontos_referencia.py` —
+mvt, ouro, manganês) via `src/modeling/regiao_completa/preparar_pontos_referencia.py` —
 ver skill `modelagem-favorabilidade` e `docs/pontos_referencia.md`.
 
 ## Relatório

@@ -17,10 +17,10 @@ rodam no Colab lendo do Drive.
 
 | Etapa | Onde | Comando | Resultado no Drive |
 |---|---|---|---|
-| 1. patches do zero | máquina local | `python exportar_patches_drive.py --projeto ee-solkancengine17` (tasks do GEE, sem rclone) | `patches_cnn_gee/` (TFRecord) |
+| 1. patches do zero | máquina local | `python building_db/exportar_patches_drive.py --projeto ee-solkancengine17` (tasks do GEE, sem rclone) | `patches_cnn_gee/` (TFRecord) |
 | 1b. converter | Colab | célula 6b (`tfrecord_para_npz.py`) | `prospectra/patches_cnn/` (~1,3 GB) |
-| 2. tiles modelo A | máquina local + Colab | `python exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17`, depois célula 10c (`cortar_tiles_drive.py`) | `prospectra/tiles_cnn/canais_A/` (~18 GB) |
-| 3. tiles modelo B1 | máquina local + Colab | `python exportar_tiles_drive.py --modelo B1 --projeto ee-solkancengine17`, depois célula 10c (`cortar_tiles_drive.py`) | `prospectra/tiles_cnn/canais_B1/` (~18 GB) |
+| 2. tiles modelo A | máquina local + Colab | `python building_db/exportar_tiles_drive.py --modelo A --projeto ee-solkancengine17`, depois célula 10c (`cortar_tiles_drive.py`) | `prospectra/tiles_cnn/canais_A/` (~18 GB) |
+| 3. tiles modelo B1 | máquina local + Colab | `python building_db/exportar_tiles_drive.py --modelo B1 --projeto ee-solkancengine17`, depois célula 10c (`cortar_tiles_drive.py`) | `prospectra/tiles_cnn/canais_B1/` (~18 GB) |
 | 4. treino e teste | Colab | `cnn_colab.ipynb` células 2–5, pule 6–7, depois 8–10 | `prospectra/runs_cnn/<rodada>/` |
 | 5. mapa | Colab | célula 11 com `USAR_TILES` marcado | `runs_cnn/<rodada>/mapas_passo<k>/` |
 | 6. subir ao GEE | máquina local | `rclone copy` da pasta de mapas + `subir_predicao_gee.py --run <pasta local>` | coleção `cnn_favorabilidade` |
@@ -101,7 +101,7 @@ rclone copy /srv/almacen/db_images/patches_cnn gdrive:prospectra/patches_cnn \
   rclone check /srv/almacen/db_images/patches_cnn gdrive:prospectra/patches_cnn
   ```
 
-- Ou exporte direto para o Drive: `python exportar_patches.py`, opção 2 e
+- Ou exporte direto para o Drive: `python building_db/exportar_patches.py`, opção 2 e
   destino 2 (Google Drive). Cada `.npz` sobe por rclone para
   `gdrive:prospectra/patches_cnn` (outro destino: variável `PATCHES_REMOTO`) e
   sai do disco; `indice_patches.csv` e `divisao.json` ficam no servidor e são
@@ -117,7 +117,7 @@ rclone copy /srv/almacen/db_images/patches_cnn gdrive:prospectra/patches_cnn \
   servidor e copiar, mande direto — cada pedaço sobe e é apagado do disco:
 
   ```bash
-  python baixar_tiles.py --modelo A --destino drive     # → gdrive:prospectra/tiles_cnn/canais_A
+  python building_db/baixar_tiles.py --modelo A --destino drive     # → gdrive:prospectra/tiles_cnn/canais_A
   ```
 
   São ~18 GB por modelo: passa da cota gratuita (15 GB).

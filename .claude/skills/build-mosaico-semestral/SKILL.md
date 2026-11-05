@@ -47,7 +47,9 @@ Estado (2026-10-17): `ASTER_v4` tem 548 assets e `ASTER_0cloud` 42;
 `ASTER_v5` e `ASTER_0cloud_v2` não existem (v2 nunca exportado).
 
 Para o mosaico único (zero-cloud + preenchimento, com/sem SWIR) ver a skill
-`build-mosaico-unico`.
+`build-mosaico-unico`. Para o mosaico sazonal seco por período (A 2000–2008,
+B 2009–2020, `build_mosaico_sazonal_seco.py`) e a harmonização das emendas com o
+MODIS, ver a skill `mosaico-sazonal-seco`.
 
 ## Contagem de cenas por semestre
 
