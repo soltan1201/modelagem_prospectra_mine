@@ -139,7 +139,16 @@ as pastas do v1 para `*_v1` (`src/modeling/regiao_completa/CHECKLIST_modelagem_s
 O CoAtNet é o que mais pede dado: rode só se os outros mostrarem que o contexto
 ajuda. Se faltar memória na GPU, acrescente `--lote 32`.
 
-Para rodar as 10 em sequência (num `tmux`):
+Para rodar as 10 em sequência (num `tmux`), o jeito mais simples é o menu do próprio script
+(sem argumentos): pergunta conjunto (A, B1 ou os dois), backbone (um ou todos) e sufixo
+(`_shm` por padrão), pula rodadas que já têm `.pt`, não para se uma falhar, grava
+`log_<nome>.txt` por rodada e, no fim, `resumo_lote_<data>.csv` com as métricas de todas:
+
+```bash
+PATCHES_DIR=/srv/almacen/db_images/patches_cnn_shm python training/treinar_cnn.py
+```
+
+Ou o laço em bash:
 
 ```bash
 mkdir -p /srv/almacen/db_images/runs_cnn

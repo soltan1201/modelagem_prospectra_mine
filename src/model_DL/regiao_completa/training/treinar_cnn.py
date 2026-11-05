@@ -46,7 +46,24 @@ nomes padronizados das rodadas em rodadas_treino.md)
   config.json, metricas_folds.csv, oof_validacao.csv (predição fora do fold),
   fold<k>.pt (melhor época), teste.csv / metricas_teste.json (com --teste)
 
+Conjuntos de canais (--modelo; patches de building_db/exportar_patches.py, mosaico harmonizado)
+  A   16 canais = 15 índices espectrais + swir_estimado
+      ferric_iron_2_1, ferric_ox_4_3, gossan_4_2, ferrous_sil_5_4, SAVI,
+      sericite_illite_smectite, kaolinite_7_5, muscovite_7_6, carbonate_8_6, dolomite,
+      carbonate_13_14, quartz_14_12, phosphorite_rbd, sultan_r, sultan_g
+  B1  15 canais = log da reflectância B01, B02, B3N, B04–B09 (9) + emissividade
+      B10–B14 (5) + swir_estimado
+  swir_estimado (0/1): 1 onde o SWIR (B04–B09) veio do modelo, não medido.
+
+Lote (sem argumentos: menu)
+  python training/treinar_cnn.py     → pergunta conjunto (A, B1 ou os dois), backbone
+  (um ou todos os 5) e sufixo (_shm); roda as rodadas uma atrás da outra, cada uma com
+  log em RUNS_DIR/log_<nome>.txt. Rodada que já tem .pt é pulada; uma que falha não
+  para o lote. No fim: RUNS_DIR/resumo_lote_<data>.csv com as métricas fora do fold
+  de todas, para comparar depois. Rodar num tmux.
+
 Uso
+  python training/treinar_cnn.py                                              # menu / lote
   python training/treinar_cnn.py --modelo A --backbone pequena --patch 32
   python training/treinar_cnn.py --modelo B1 --backbone regnety_016 --folds 0,1,2,3,4
   python training/treinar_cnn.py --modelo A --backbone regnety_016 --teste     # final
@@ -454,7 +471,7 @@ def main(lista=None):
         torch.save({'estado': modelo.state_dict(), 'est': est, 'canais': canais, 'args': vars(args)},
                    pasta / 'final.pt')
         print(f'TESTE: {m}  (GTB: AUC por ponto {GTB_REF})')
-        return
+        return m
 
     linhas, oof = [], []
     for k in [int(f) for f in args.folds.split(',')]:
@@ -477,7 +494,117 @@ def main(lista=None):
     print('\n' + tab.round(3).to_string(index=False))
     print(f'\nFORA DO FOLD (todos): {json.dumps(geral, default=float)}')
     print(f'Referência GTB: AUC por ponto {GTB_REF} (célula de fora, mosaico v1)')
+    return geral
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LOTE (menu)
+# ═══════════════════════════════════════════════════════════════════════════
+CONJUNTOS = {
+    'A':  ('15 índices espectrais + swir_estimado (16 canais)',
+           ['ferric_iron_2_1', 'ferric_ox_4_3', 'gossan_4_2', 'ferrous_sil_5_4', 'SAVI',
+            'sericite_illite_smectite', 'kaolinite_7_5', 'muscovite_7_6', 'carbonate_8_6', 'dolomite',
+            'carbonate_13_14', 'quartz_14_12', 'phosphorite_rbd', 'sultan_r', 'sultan_g', 'swir_estimado']),
+    'B1': ('log da reflectância VNIR/SWIR + emissividade TIR + swir_estimado (15 canais)',
+           [f'log_{b}' for b in ['B01', 'B02', 'B3N', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09']]
+           + [f'emis_{b}' for b in ['B10', 'B11', 'B12', 'B13', 'B14']] + ['swir_estimado']),
+}
+# backbone → (nome curto da rodada, patch em px, descrição) — tabela do rodadas_treino.md
+BACKBONES = {
+    'pequena':             ('pequena',  32, 'CNN pequena do zero (conv + SE)'),
+    'regnety_016':         ('regnety',  64, 'RegNetY-1.6GF, ImageNet'),
+    'tf_efficientnetv2_s': ('effv2s',   64, 'EfficientNetV2-S, ImageNet'),
+    'resnet50':            ('resnet50', 64, 'ResNet-50, ImageNet'),
+    'coatnet_0_rw_224':    ('coatnet0', 64, 'CoAtNet-0 (conv + atenção), ImageNet'),
+}
+
+
+class _Tee:
+    """Escreve no terminal e no log da rodada ao mesmo tempo."""
+    def __init__(self, *saidas):
+        self.saidas = saidas
+
+    def write(self, t):
+        for s in self.saidas:
+            s.write(t)
+            s.flush()
+
+    def flush(self):
+        for s in self.saidas:
+            s.flush()
+
+
+def _escolher(titulo, opcoes, padrao):
+    print(f'\n{titulo}')
+    for i, (chave, texto) in enumerate(opcoes, 1):
+        print(f'  {i}) {chave:<22} {texto}')
+    r = input(f'Escolha [{padrao}]: ').strip() or str(padrao)
+    if not r.isdigit() or not 1 <= int(r) <= len(opcoes):
+        raise SystemExit(f'opção inválida: {r}')
+    return opcoes[int(r) - 1][0]
+
+
+def menu_lote():
+    import sys
+    print('Treino da CNN em lote — conjuntos de canais:')
+    for m, (txt, canais) in CONJUNTOS.items():
+        print(f'\n  {m}: {txt}\n      ' + ', '.join(canais))
+    conj = _escolher('Conjunto de canais:', [('A', CONJUNTOS['A'][0]), ('B1', CONJUNTOS['B1'][0]),
+                                             ('os dois', 'A e B1')], 3)
+    modelos = ['A', 'B1'] if conj == 'os dois' else [conj]
+    bb = _escolher('Backbone:', [(k, f'{v[2]} · patch {v[1]} px') for k, v in BACKBONES.items()]
+                   + [('todos', 'os 5, um atrás do outro')], len(BACKBONES) + 1)
+    backbones = list(BACKBONES) if bb == 'todos' else [bb]
+    suf = input('\nSufixo do nome (Enter = _shm, mosaico harmonizado; "-" = sem sufixo, v1): ').strip()
+    suf = '' if suf == '-' else (suf or '_shm')
+    extra = input('Argumentos extras para todas (ex.: --lote 32 --epocas 30; Enter = nenhum): ').split()
+
+    fila = [(m, b, f'{m}_{BACKBONES[b][0]}_{BACKBONES[b][1]}{suf}') for b in backbones for m in modelos]
+    runs = Path(next((extra[i + 1] for i, x in enumerate(extra[:-1]) if x == '--saida'), RUNS_DIR))
+    dados = Path(next((extra[i + 1] for i, x in enumerate(extra[:-1]) if x == '--dados'), PATCHES_DIR))
+    print(f'\nPatches: {dados}\nRodadas: {runs}')
+    for m, b, nome in fila:
+        feito = any((runs / nome).glob('*.pt'))
+        print(f'  {nome:<24} --modelo {m} --backbone {b} --patch {BACKBONES[b][1]}'
+              + ('   (já tem .pt: pula)' if feito else ''))
+    if input(f'\nRodar {len(fila)} rodada(s)? [s/N]: ').strip().lower() != 's':
+        raise SystemExit('nada feito')
+
+    runs.mkdir(parents=True, exist_ok=True)
+    resumo, t0 = [], time.time()
+    for i, (m, b, nome) in enumerate(fila, 1):
+        if any((runs / nome).glob('*.pt')):
+            resumo.append({'rodada': nome, 'modelo': m, 'backbone': b, 'status': 'pulada (já tinha .pt)'})
+            continue
+        print(f'\n{"#" * 70}\n# {i}/{len(fila)}  {nome}\n{"#" * 70}')
+        t = time.time()
+        with open(runs / f'log_{nome}.txt', 'w') as log_arq:
+            sys.stdout = _Tee(sys.__stdout__, log_arq)
+            try:
+                geral = main(['--modelo', m, '--backbone', b, '--patch', str(BACKBONES[b][1]),
+                              '--nome', nome] + extra)
+                resumo.append({'rodada': nome, 'modelo': m, 'backbone': b, 'status': 'ok',
+                               'minutos': round((time.time() - t) / 60, 1), **(geral or {})})
+            except (Exception, SystemExit) as e:      # uma rodada com erro não para o lote
+                print(f'ERRO em {nome}: {e!r}')
+                resumo.append({'rodada': nome, 'modelo': m, 'backbone': b, 'status': f'erro: {e!r}'[:200],
+                               'minutos': round((time.time() - t) / 60, 1)})
+            finally:
+                sys.stdout = sys.__stdout__
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+    tab = pd.DataFrame(resumo)
+    arq = runs / f'resumo_lote_{datetime.now():%Y%m%d_%H%M}.csv'
+    tab.to_csv(arq, index=False)
+    cols = [c for c in ['rodada', 'status', 'minutos', 'auc_ponto', 'ap_ganho', 'boyce', 'top10'] if c in tab]
+    print(f'\nLote concluído em {(time.time() - t0) / 3600:.1f} h → {arq}')
+    print(tab[cols].round(3).to_string(index=False))
+    print(f'Referência GTB: AUC por ponto {GTB_REF}')
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if len(sys.argv) == 1:
+        menu_lote()
+    else:
+        main()

@@ -152,7 +152,7 @@ function desenhar() {
 
 function atualizarLimiar() {
   if (!atual) { return; }
-  var t = sldLimiar.getValue();
+  var t = Math.round(sldLimiar.getValue() * 100) / 100;   // 0.94, não 0.9400000000000001
   if (camLimiar) { Map.layers().remove(camLimiar); }
   if (camAmbos) { Map.layers().remove(camAmbos); }
   var acima = atual.img.gte(t);
