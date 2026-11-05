@@ -33,6 +33,13 @@ Modo pedaços (--tiles, recomendado para o mapa inteiro)
   <saida>/p_<LxCy>_<rodada>.tif — UInt16, p × 10000, 0 = sem dado (convenção do
   favorabilidade_ml), prontos para subir_predicao_gee.py.
 
+Menu (sem argumentos)
+  python predict/inferir_cnn.py
+  pergunta, explicando cada escolha: a rodada (lista as de RUNS_DIR com modelo,
+  backbone e .pt), quais modelos usar, de onde vêm os canais (pasta de pedaços
+  com o número de células já baixadas, outra pasta ou GEE na hora), o passo, as
+  células, lote/sub e a pasta de saída. Mostra o comando equivalente e confirma.
+
 Uso
   python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/A_regnety_64 --tiles padrao --passo 1
   python predict/inferir_cnn.py --run <pasta> --tiles padrao --passo 3 --celulas L2C3,L3C3
@@ -413,5 +420,132 @@ def main(lista=None):
               f'p ≥ 0,5 em {100 * np.nanmean(p >= 0.5):.1f}% → {Path(saida).name} ({time.time() - t0:.0f} s)')
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MENU (sem argumentos)
+# ═══════════════════════════════════════════════════════════════════════════
+def _escolher(titulo, opcoes, padrao):
+    print(f'\n{titulo}')
+    for i, (chave, texto) in enumerate(opcoes, 1):
+        print(f'  {i}) {chave:<26} {texto}')
+    r = input(f'Escolha [{padrao}]: ').strip() or str(padrao)
+    if not r.isdigit() or not 1 <= int(r) <= len(opcoes):
+        raise SystemExit(f'opção inválida: {r}')
+    return opcoes[int(r) - 1][0]
+
+
+def _perguntar(texto, padrao=''):
+    r = input(f'{texto} [{padrao or "vazio"}]: ').strip()
+    return r or padrao
+
+
+def _info_rodada(run):
+    """(modelo A/B1, backbone, texto dos .pt) lidos do config.json da rodada."""
+    try:
+        cfg = json.loads((run / 'config.json').read_text())
+    except (OSError, ValueError):
+        cfg = {}
+    modelo = cfg.get('modelo') or run.name.split('_')[0]
+    folds = sorted(run.glob('fold*.pt'))
+    pts = ('final.pt + ' if (run / 'final.pt').exists() else '') + f'{len(folds)} folds'
+    return modelo, cfg.get('backbone', '?'), pts
+
+
+def menu_inferencia():
+    """Pergunta os parâmetros e devolve a lista de argumentos para main()."""
+    print('Inferência da CNN (janela deslizante) — responda ou dê Enter para o padrão.')
+
+    # 1. rodada
+    runs_dir = Path(_perguntar('\n1) Pasta com as rodadas de treinar_cnn.py (RUNS_DIR)', str(tc.RUNS_DIR))).expanduser()
+    rodadas = sorted(p for p in runs_dir.iterdir() if p.is_dir() and
+                     ((p / 'final.pt').exists() or any(p.glob('fold*.pt')))) if runs_dir.is_dir() else []
+    if rodadas:
+        ops = []
+        for r in rodadas:
+            m, bb, pts = _info_rodada(r)
+            ops.append((r.name, f'conjunto {m} · {bb} · {pts}'))
+        ops.append(('outra', 'digitar o caminho de uma rodada'))
+        nome = _escolher('Rodada (pasta com final.pt ou fold<k>.pt). Rodadas _shm = mosaico harmonizado:',
+                         ops, 1)
+    else:
+        print(f'  nenhuma rodada com .pt em {runs_dir}')
+        nome = 'outra'
+    run = (Path(input('Caminho da rodada: ').strip()).expanduser() if nome == 'outra' else runs_dir / nome)
+    if not run.is_dir():
+        raise SystemExit(f'rodada não encontrada: {run}')
+    modelo, bb, pts = _info_rodada(run)
+    shm = '_shm' in run.name
+    print(f'  → {run} (conjunto {modelo}, {bb}, {pts}; mosaico {"harmonizado" if shm else "v1"})')
+
+    # 2. modelos
+    tem_final = (run / 'final.pt').exists()
+    ops = [('', 'final.pt se existir; senão média dos 5 folds (ensemble, 5× mais lento)'),
+           ('auto', 'um só: final.pt ou o 1º fold sem ocorrência na validação (rápido)'),
+           ('escolher', 'digitar os folds (ex.: 0,2)')]
+    folds = _escolher('2) Quais modelos prever' + (' (rodada tem final.pt = treinada em todos os folds):'
+                      if tem_final else ' (rodada sem final.pt — rode o teste final para ter um):'),
+                      [(k or 'padrão', t) for k, t in ops], 1)
+    folds = {'padrão': ''}.get(folds, folds)
+    if folds == 'escolher':
+        folds = input('Folds (ex.: 0,2): ').strip()
+
+    # 3. canais
+    padrao = ep.tiles_dir(shm) / f'canais_{modelo}'
+    n_cel = len([p for p in padrao.iterdir() if p.is_dir()]) if padrao.is_dir() else 0
+    fonte = _escolher('3) De onde vêm os canais (os recortes de entrada do predict):', [
+        ('padrao', f'{padrao} — {n_cel} de 25 células baixadas' +
+         ('' if n_cel else f' (rode building_db/baixar_tiles.py --modelo {modelo})')),
+        ('outra pasta', f'digitar uma pasta canais_{modelo} (ex.: cópia do Drive, outro disco)'),
+        ('GEE', 'calcula e baixa do GEE na hora por computePixels (sem pedaços; lento, só para poucas células)'),
+    ], 1 if n_cel else 2)
+    if fonte == 'outra pasta':
+        tiles = input(f'Pasta (contém subpastas L1C1 … L5C5 com <LxCy>_r<i>c<j>.tif): ').strip()
+        if not Path(tiles).expanduser().is_dir():
+            raise SystemExit(f'pasta não encontrada: {tiles}')
+        tiles = str(Path(tiles).expanduser())
+    else:
+        tiles = {'padrao': 'padrao', 'GEE': ''}[fonte]
+    if tiles == 'padrao' and not n_cel:
+        raise SystemExit(f'{padrao} vazia — rode baixar_tiles.py --modelo {modelo} antes')
+
+    # 4. passo
+    passo = _escolher('4) Passo da janela (um p a cada N pixels de 30 m):', [
+        ('3', '90 m — prévia, 9× mais rápido'),
+        ('1', '30 m — mapa final (o que sobe ao GEE)'),
+        ('outro', 'digitar (prefira ímpar: 5, 7 …)')], 1)
+    if passo == 'outro':
+        passo = input('Passo: ').strip()
+
+    # 5. células
+    cel = _perguntar('\n5) Células, separadas por vírgula (ex.: L2C3 para a prévia; vazio = todas as 25)',
+                     'L2C3' if passo == '3' else '').upper()
+
+    # 6. memória
+    lote = _perguntar('\n6) Lote de patches por vez na GPU (baixe se faltar memória)', '256')
+    sub = '1'
+    if tiles:
+        sub = _perguntar('   Subdividir cada pedaço em N × N (aumente se faltar RAM)', '1')
+
+    # 7. saída
+    saida_pad = run / f'mapas_passo{passo}'
+    saida = _perguntar(f'\n7) Pasta de saída', str(saida_pad))
+
+    lista = ['--run', str(run), '--passo', passo, '--lote', lote]
+    if cel:
+        lista += ['--celulas', cel]
+    if tiles:
+        lista += ['--tiles', tiles, '--sub', sub]
+    if folds:
+        lista += ['--folds', folds]
+    if saida != str(saida_pad):
+        lista += ['--saida', saida]
+    if not tiles:
+        lista += ['--projeto', _perguntar('   Projeto GEE', ep.PROJETO_EE)]
+
+    print('\nComando equivalente:\n  python predict/inferir_cnn.py ' + ' '.join(lista))
+    if input('Rodar agora? [S/n]: ').strip().lower() in ('n', 'nao', 'não'):
+        raise SystemExit('cancelado')
+    return lista
+
+
 if __name__ == '__main__':
-    main()
+    main(None if len(sys.argv) > 1 else menu_inferencia())

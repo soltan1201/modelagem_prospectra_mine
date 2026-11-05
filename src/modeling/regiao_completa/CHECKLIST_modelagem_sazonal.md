@@ -248,6 +248,7 @@ cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
 python building_db/baixar_tiles.py --modelo A          # → tiles_cnn_shm/canais_A/<LxCy>/
 python building_db/baixar_tiles.py --modelo B1         # se a escolhida for B1
 # 2. prévia rápida (90 m) numa célula, depois a área toda a 30 m (conda py_DL, GPU)
+#    sem argumentos abre menu: python predict/inferir_cnn.py
 python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/<escolhido>_shm --tiles padrao --passo 3 --celulas L2C3
 python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/<escolhido>_shm --tiles padrao --passo 1
 # 3. bordas entre pedaços/células
