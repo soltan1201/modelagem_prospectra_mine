@@ -42,7 +42,8 @@ from rasterio.merge import merge
 from rasterio.transform import Affine, rowcol
 
 RUNS_DIR = Path(os.environ.get('RUNS_DIR', '/srv/almacen/db_images/runs_cnn')).expanduser()
-TILES_DIR = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn')).expanduser()
+# canais do fundo RGB/índices: harmonizado (tiles_cnn_shm) por padrão; v1: TILES_DIR=.../tiles_cnn
+TILES_DIR = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn_shm')).expanduser()
 PATCHES_DIR = Path(os.environ.get('PATCHES_DIR', '/srv/almacen/db_images/patches_cnn')).expanduser()
 
 AREA_TODA = 'Área toda'

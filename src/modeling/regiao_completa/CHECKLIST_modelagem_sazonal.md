@@ -188,7 +188,11 @@ rclone moveto gdrive:prospectra/tiles_cnn   gdrive:prospectra/tiles_cnn_v1
 rclone moveto gdrive:prospectra/runs_cnn    gdrive:prospectra/runs_cnn_v1
 ```
 
-- [ ] Servidor `.250` (e `.251`, se tiver cópia — `guia_dois_servidores.md`)
+- [ ] Servidor `.250` (e `.251`, se tiver cópia — `guia_dois_servidores.md`).
+      2026-11-05: **não feito** — `patches_cnn/` já tem os patches do harmonizado (os do v1
+      foram sobrescritos; refazer com `MOSAICO = 'aster-mosaico-final'` se precisar);
+      `runs_cnn/` tem v1 e `_shm` lado a lado (nomes não colidem); `tiles_cnn/` ainda é o
+      v1 → mover antes do passo 14
 - [ ] Drive (inclui `patches_cnn_gee/` e `tiles_cnn_gee/` do GEE, se existirem)
 - [ ] Para olhar o v1 depois: `RUNS_DIR=.../runs_cnn_v1 TILES_DIR=.../tiles_cnn_v1`
 
@@ -199,19 +203,19 @@ magenta do visualizador). Negativos = `NEG_MODO = 'cluster'`: pixels nos cluster
 `cluster_fundo_RC_shm.json` (os mesmos do fundo do RF/GTB), a > 2 km das ocorrências e com
 RF e GTB < 0,30. Fundo aleatório continua só para avaliação.
 
-- [ ] Só sortear: conferir no log os números por célula — positivos (RF e GTB ≥ 0,5),
-      negativos, difíceis e fundo
-- [ ] Se os pseudo-positivos caírem muito em relação ao v1 (mapas mais conservadores),
-      discutir `P_POS` antes de baixar; não mudar sozinho
-- [ ] `indice_patches.csv` e `divisao.json` gravados; células de teste = as das
-      ocorrências de validação (iguais às do v1)
+- [x] Só sortear: 10.435 centros — ambos 2.518, negativo (cluster) 3.335, negativo_dificil
+      2.332, fundo 1.917, ocorrencia_treino 117 (13 × 9), ocorrencia_teste 216 (24 × 9);
+      treino 9.023, teste 1.412
+- [x] `P_POS = 0.94` mantido (área RF e GTB ≥ 0,94 = 1,8 % da região)
+- [x] `indice_patches.csv` e `divisao.json` gravados (`MOSAICO` harmonizado, `NEG_MODO = cluster`,
+      `CONJUNTO_FAV = selecao`); células de teste L1C4, L2C5, L3C5
 
 ### 11. Patches
 
 Servidor: `python building_db/exportar_patches.py` opção 2. Sem servidor: `exportar_patches_drive.py`
 e `tfrecord_para_npz.py` no Colab (`rodadas_treino.md`, "Patches pelo Google Drive").
 
-- [ ] `modelo_A/patches_<LxCy>.npz` e `modelo_B1/...` nas 25 células
+- [x] `modelo_A/patches_<LxCy>.npz` e `modelo_B1/...` em `/srv/almacen/db_images/patches_cnn` (.250)
 - [ ] Conferir um patch: canal `swir_estimado` = 1 onde `origem_patch` ≥ 2
 
 ### 12. Rodadas (nomes com `_shm`)
@@ -219,26 +223,50 @@ e `tfrecord_para_npz.py` no Colab (`rodadas_treino.md`, "Patches pelo Google Dri
 Nome: `<modelo>_<backbone curto>_<patch>_shm` (`_shm_teste`, `_shm_1fold`). O sufixo vai
 para os assets no GEE e define a propriedade `mosaico` dos mapas.
 
-- [ ] Linha de base: `A_pequena_32_shm`, `B1_pequena_32_shm`
-- [ ] Backbone que ganhou no v1, A e B1 (ex.: `A_regnety_64_shm`, `B1_regnety_64_shm`)
-- [ ] Outros backbones só se a linha de base mostrar ganho
-- [ ] Tabela de comparação (`rodadas_treino.md`, seção 3, tabela do sazonal) com a
-      referência GTB do passo 4
+- [x] As 10 rodadas pelo menu de lote do `training/treinar_cnn.py` (A e B1 × 5 backbones),
+      2026-11-05 07:42–09:41 no .250 (≈ 2 h, RTX 3070) →
+      `runs_cnn/resumo_lote_20261105_0941.csv`; todas `ok`, 5 folds cada
+- [ ] Tabela de comparação (`rodadas_treino.md`, seção 3, tabela do sazonal) — números nas Notas
+- [ ] Escolher a rodada para o teste final (candidatas: `A_coatnet0_64_shm`, `B1_effv2s_64_shm`)
+- [ ] Conferir os `historico_fold<k>.csv` das candidatas (melhor época por fold → `--epocas`
+      do teste)
 
 ### 13. Teste final (uma vez)
 
 - [ ] `<escolhido>_shm_teste` com `--epocas` = média das melhores épocas do CV
 - [ ] `metricas_teste.json`; comparar com o teste do v1 (mesmas células de teste)
 
-### 14. Mapa
+### 14. Mapa (`src/model_DL/regiao_completa/`, no .250)
 
-- [ ] `baixar_tiles.py --modelo <A|B1>` (ou `exportar_tiles_drive.py` + `cortar_tiles_drive.py`)
-- [ ] `inferir_cnn.py --run .../runs_cnn/<escolhido>_shm_teste --tiles padrao --passo 1`
-- [ ] `preencher_bordas.py --preencher --interpolar 10`
-- [ ] `juntar_mapas_gee.py` → upload à mão → `propriedades_mapas_gee.py`
-      (`mosaico` sai do `_shm` do nome)
+Pedaços de canais do harmonizado em pasta própria: `tiles_cnn_shm/` (rodadas `_shm`);
+`tiles_cnn/` fica com o v1. `baixar_tiles` e `inferir_cnn` pulam o que já existe, por isso
+não misturar. Drive: `tiles_cnn_gee_shm/` e `prospectra/tiles_cnn_shm/`.
+
+```bash
+cd /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa
+# 1. canais da área toda (GEE → GeoTIFF; conda py_gee) — só o conjunto da rodada escolhida
+python building_db/baixar_tiles.py --modelo A          # → tiles_cnn_shm/canais_A/<LxCy>/
+python building_db/baixar_tiles.py --modelo B1         # se a escolhida for B1
+# 2. prévia rápida (90 m) numa célula, depois a área toda a 30 m (conda py_DL, GPU)
+python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/<escolhido>_shm --tiles padrao --passo 3 --celulas L2C3
+python predict/inferir_cnn.py --run /srv/almacen/db_images/runs_cnn/<escolhido>_shm --tiles padrao --passo 1
+# 3. bordas entre pedaços/células
+python predict/preencher_bordas.py --mapas /srv/almacen/db_images/runs_cnn/<escolhido>_shm/mapas_passo1 --preencher --interpolar 10
+# 4. GEE (mosaico = harmonizado pelo _shm do nome)
+python predict/subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/<escolhido>_shm --passo 1
+#    ou: juntar_mapas_gee.py → upload à mão → propriedades_mapas_gee.py
+```
+
+- [ ] Rodada escolhida: com `<escolhido>_shm_teste/final.pt` o `inferir_cnn` usa o modelo final;
+      sem ele, a média dos 5 `fold<k>.pt` da rodada de CV
+- [ ] `baixar_tiles` do conjunto da escolhida (A ou B1); log diz `tiles_cnn_shm`
+- [ ] `inferir_cnn` imprime `Pedaços de canais: .../tiles_cnn_shm/canais_<A|B1>`
+- [ ] Prévia `--passo 3` na L2C3 conferida (`predict/app_visualizar.py`, fundo = harmonizado)
+- [ ] `--passo 1` nas 25 células → `mapas_passo1/p_<LxCy>_<rodada>.tif`
+- [ ] `preencher_bordas` → `mapas_passo1_preenchido/`
+- [ ] Subida → coleção `cnn_favorabilidade` com `mosaico = aster-mosaico-final_sazonal_hm_razao`
 - [ ] `visualizar_cnn_favorabilidade.js`: hoje o fundo é o mosaico v1; trocar para o
-      sazonal se for comparar
+      harmonizado se for comparar
 
 ### 15. Relatório de deep learning
 
@@ -278,3 +306,15 @@ para os assets no GEE e define a propriedade `mosaico` dos mapas.
   RF / GTB nas ocorrências de validação 90 / 92, nas de treino 65 / 61; célula 8 é a pior
   (56 / 52); 12 (RF) e 13 (GTB) das 37 no top 10 %. Referência v1 (fosfato, avaliar_maxent):
   RF 0,83, GTB 0,84, mas com fundo aleatório; não é comparável direto com o fundo cluster.
+- 2026-11-05: CNN no harmonizado, 10 rodadas `_shm` (patches `P_POS = 0.94`, negativos por
+  cluster). Fora do fold, 13 ocorrências de treino × fundo aleatório (auc_ponto / ap_ganho /
+  Boyce / top10):
+  `A_coatnet0_64` 0,968 / 16,6 / 0,59 / 0,92 · `B1_effv2s_64` 0,958 / 14,1 / 0,61 / 0,85 ·
+  `A_pequena_32` 0,947 / 9,2 / 0,54 / 1,00 · `B1_regnety_64` 0,930 / 7,9 / 0,71 / 0,85 ·
+  `B1_coatnet0_64` 0,915 / 7,6 / 0,59 / 0,69 · `A_regnety_64` 0,910 / 6,5 / 0,69 / 0,54 ·
+  `B1_pequena_32` 0,903 / 5,4 / 0,66 / 0,54 · `A_resnet50_64` 0,898 / 4,8 / 0,66 / 0,31 ·
+  `B1_resnet50_64` 0,884 / 4,3 / 0,69 / 0,38 · `A_effv2s_64` 0,877 / 6,5 / 0,74 / 0,69.
+  Todas acima da referência GTB (0,84), mas a comparação é otimista: os pseudo-rótulos vêm
+  de mapas RF/GTB treinados com todos os pontos (passo 5) e só 13 ocorrências entram na
+  validação. Boyce baixo (0,54–0,74) em todas: a ordenação no topo é boa, a curva
+  intermediária não.

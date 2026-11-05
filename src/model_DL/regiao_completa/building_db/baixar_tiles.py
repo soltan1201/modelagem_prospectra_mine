@@ -14,7 +14,7 @@ rodada por modelo:
 Download por ee.data.computePixels (sem task; limite 48 MB por pedido — um
 pedaço de ~720 × 720 px × 16 canais float32 tem ~33 MB).
 
-Saída (TILES_DIR, padrão /srv/almacen/db_images/tiles_cnn)
+Saída (TILES_DIR, padrão /srv/almacen/db_images/tiles_cnn_shm no harmonizado; tiles_cnn no v1)
   canais_<modelo>/<LxCy>/<LxCy>_r<i>c<j>.tif   GeoTIFF float32, EPSG:4326, grade de
       30 m do mosaico, NaN sem dado, deflate; bandas com o nome do canal; tags:
       modelo, celula, linha, coluna, borda, linha0/coluna0 (início do miolo na
@@ -61,8 +61,9 @@ AQUI = Path(__file__).resolve().parent
 sys.path += [str(AQUI.parent / d) for d in ('building_db', 'training', 'predict')]
 import exportar_patches as ep   # noqa: E402  (canais, grade, grid, computePixels)
 
-TILES_DIR = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn')).expanduser()
-TILES_REMOTO = os.environ.get('TILES_REMOTO', 'gdrive:prospectra/tiles_cnn')
+TILES_DIR = ep.tiles_dir()          # tiles_cnn_shm no mosaico harmonizado (ep.MOSAICO); $TILES_DIR manda
+SUFIXO = '_shm' if ep.eh_shm() else ''
+TILES_REMOTO = os.environ.get('TILES_REMOTO', f'gdrive:prospectra/tiles_cnn{SUFIXO}')
 LIMITE_PEDIDO = 48 * 1024 ** 2      # bytes por computePixels
 
 
@@ -140,7 +141,7 @@ def main(lista=None):
     if args.dir:
         pasta = Path(args.dir).expanduser()
     elif args.destino == 'drive':
-        pasta = ep.pasta_passagem('TILES_DIR', 'tiles_cnn')
+        pasta = ep.pasta_passagem('TILES_DIR', f'tiles_cnn{SUFIXO}')
     else:
         pasta = TILES_DIR
     raiz = pasta / f'canais_{args.modelo}'

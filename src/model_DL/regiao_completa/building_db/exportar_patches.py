@@ -526,6 +526,22 @@ def checar_rclone(remoto):
                          f'remote: PATCHES_REMOTO / --remoto <remote>:prospectra/... (ver guia_gdrive.md).')
 
 
+TILES_BASE = '/srv/almacen/db_images/tiles_cnn'
+
+
+def eh_shm(mosaico=None):
+    return (mosaico or MOSAICO) == 'aster-mosaico-final_sazonal_hm_razao'
+
+
+def tiles_dir(shm=None):
+    """Pasta dos pedaços de canais: $TILES_DIR se definida; senão tiles_cnn_shm (mosaico
+    harmonizado) ou tiles_cnn (v1). shm=None → pelo MOSAICO daqui; nas rodadas, pelo _shm do nome.
+    Pastas separadas porque baixar_tiles/inferir_cnn pulam o que já existe (não misturar v1 e shm)."""
+    if os.environ.get('TILES_DIR'):
+        return Path(os.environ['TILES_DIR']).expanduser()
+    return Path(TILES_BASE + ('_shm' if (eh_shm() if shm is None else shm) else ''))
+
+
 def pasta_passagem(variavel, nome):
     """Pasta local do destino 'drive': $variavel se definida; senão ~/.cache/prospectra/<nome>
     (só guarda arquivos até subirem, então serve em qualquer máquina)."""

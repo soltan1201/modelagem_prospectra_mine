@@ -36,7 +36,7 @@ sys.path += [str(AQUI.parent / d) for d in ('building_db', 'training', 'predict'
 import exportar_patches as ep   # noqa: E402  (canais, grade, grid)
 import baixar_tiles as bt       # noqa: E402  (limites da célula na grade)
 
-PASTA_DRIVE = 'tiles_cnn_gee'       # pasta na raiz do Meu Drive (o GEE não cria subpastas)
+PASTA_DRIVE = 'tiles_cnn_gee' + ('_shm' if ep.eh_shm() else '')   # pasta na raiz do Meu Drive (o GEE não cria subpastas)
 PREFIXO     = 'cnn_tiles'           # descrição das tasks: <PREFIXO>_<modelo>_<LxCy>
 
 

@@ -310,9 +310,11 @@ def juntar(arquivos, saida):
 
 
 def rodar_tiles(args, modelos, canais, patch, modelo_dados, pasta, dispositivo):
-    padrao = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn')) / f'canais_{modelo_dados}'
-    raiz = padrao if args.tiles == 'padrao' else Path(args.tiles)
     rodada = Path(args.run).resolve().name     # sufixo dos arquivos de saída
+    # rodada _shm → tiles_cnn_shm; sem _shm → tiles_cnn (v1); $TILES_DIR manda
+    padrao = ep.tiles_dir('_shm' in rodada) / f'canais_{modelo_dados}'
+    raiz = padrao if args.tiles == 'padrao' else Path(args.tiles)
+    print(f'Pedaços de canais: {raiz}')
     celulas = sorted(p.name for p in raiz.iterdir() if p.is_dir())
     pedidas = [c.strip().upper() for c in args.celulas.split(',') if c.strip()]
     celulas = [c for c in celulas if not pedidas or c in pedidas]

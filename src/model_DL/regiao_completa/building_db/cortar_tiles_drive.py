@@ -58,8 +58,9 @@ def main(lista=None):
     import rasterio
     a = argparse.ArgumentParser(description='GeoTIFF por célula (GEE → Drive) → pedaços do inferir_cnn --tiles')
     a.add_argument('--modelo', required=True, choices=list(ep.MODELOS))
-    a.add_argument('--origem', default='/content/drive/MyDrive/tiles_cnn_gee')
-    a.add_argument('--destino', default=os.environ.get('TILES_DIR', '/content/drive/MyDrive/prospectra/tiles_cnn'))
+    a.add_argument('--origem', default='/content/drive/MyDrive/tiles_cnn_gee' + ('_shm' if ep.eh_shm() else ''))
+    a.add_argument('--destino', default=os.environ.get('TILES_DIR', '/content/drive/MyDrive/prospectra/tiles_cnn'
+                                                        + ('_shm' if ep.eh_shm() else '')))
     a.add_argument('--n', type=int, default=6, help='pedaços por lado em cada célula')
     a.add_argument('--borda', type=int, default=ep.PATCH // 2, help='a mesma do exportar_tiles_drive.py')
     a.add_argument('--celulas', default='', help='ex.: L2C3,L3C3 (vazio = todas)')

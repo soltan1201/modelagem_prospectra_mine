@@ -162,7 +162,8 @@ def main(lista=None):
     a.add_argument('--runs', default=os.environ.get('RUNS_DIR', '/srv/almacen/db_images/runs_cnn'))
     a.add_argument('--tiles', default='', help='pasta canais_<modelo> (só com --mapas); diz se a faixa é '
                    'buraco da entrada. Em todas as rodadas: TILES_DIR/canais_<modelo do config.json>')
-    a.add_argument('--tiles-dir', default=os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn'))
+    a.add_argument('--tiles-dir', default=os.environ.get('TILES_DIR', ''),
+                   help='vazio = tiles_cnn_shm para rodadas _shm, tiles_cnn para as do v1')
     a.add_argument('--preencher', action='store_true', help='grava <mapas>_preenchido/ com as vizinhas')
     a.add_argument('--interpolar', type=int, default=0, help='px máximos de interpolação no que sobrar (0 = não)')
     args = a.parse_args(lista)
@@ -177,7 +178,9 @@ def main(lista=None):
     for run in sorted(p for p in Path(args.runs).iterdir() if p.is_dir() and any(p.glob('*.pt'))):
         cfg = json.loads((run / 'config.json').read_text()) if (run / 'config.json').exists() else {}
         modelo = cfg.get('modelo') or run.name.split('_')[0]
-        tiles = Path(args.tiles_dir) / f'canais_{modelo}'
+        base = (Path(args.tiles_dir) if args.tiles_dir else
+                Path('/srv/almacen/db_images/tiles_cnn' + ('_shm' if '_shm' in run.name else '')))
+        tiles = base / f'canais_{modelo}'
         for pasta in sorted(run.glob('mapas_passo*')):
             if not pasta.is_dir() or not pasta.name.removeprefix('mapas_passo').isdigit():
                 continue                                     # pula as _preenchido
