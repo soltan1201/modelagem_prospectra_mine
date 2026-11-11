@@ -3,7 +3,10 @@ Treino da CNN de favorabilidade de fosfato com os patches de exportar_patches.py
 (plano em plano_cnn.md). PyTorch + timm; roda igual no servidor, na GPU local
 e no Colab (o notebook só chama main() ou as funções).
 
-Entrada   PATCHES_DIR/modelo_<A|B1>/patches_<LxCy>.npz  (X (N, C, 64, 64) float16)
+Entrada   <dados>/modelo_<A|B1>/patches_<LxCy>.npz  (X (N, C, 64, 64) float16)
+          <dados> = --dados, $PATCHES_DIR, ou pelo nome da rodada: _shm → patches_cnn_shm
+          (mosaico harmonizado), sem _shm → patches_cnn (v1). O MOSAICO do divisao.json
+          da pasta tem de bater com o da rodada, senão o treino para.
           A  = 15 índices + swir_estimado   B1 = 9 log-bandas + 5 emissividades + swir_estimado
 Divisão   campos 'conjunto' e 'fold' dos .npz (divisao.json): treino nos folds ≠ k,
           validação no fold k; 'teste' só com --teste (uma vez, no fim).
@@ -84,7 +87,34 @@ import torch.nn.functional as F
 from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data import DataLoader, Dataset
 
-PATCHES_DIR = Path(os.environ.get('PATCHES_DIR', '/srv/almacen/db_images/patches_cnn')).expanduser()
+PATCHES_BASE = '/srv/almacen/db_images/patches_cnn'      # + _shm no mosaico harmonizado
+MOSAICO_V1, MOSAICO_SHM = 'aster-mosaico-final', 'aster-mosaico-final_sazonal_hm_razao'
+
+
+def pasta_patches(shm=True):
+    """$PATCHES_DIR se definida; senão patches_cnn_shm (rodadas _shm) ou patches_cnn (v1)."""
+    if os.environ.get('PATCHES_DIR'):
+        return Path(os.environ['PATCHES_DIR']).expanduser()
+    return Path(PATCHES_BASE + ('_shm' if shm else ''))
+
+
+def conferir_mosaico(pasta, shm):
+    """Para se os patches da pasta são de outro mosaico que o da rodada (MOSAICO do divisao.json
+    gravado pelo exportar_patches.py); devolve o mosaico dos patches."""
+    esperado = MOSAICO_SHM if shm else MOSAICO_V1
+    arq = Path(pasta) / 'divisao.json'
+    if not arq.exists():
+        print(f'AVISO: {arq} não existe — não dá para conferir o mosaico dos patches (rodada: {esperado}).')
+        return None
+    mosaico = json.loads(arq.read_text()).get('parametros', {}).get('MOSAICO')
+    if mosaico and mosaico != esperado:
+        raise SystemExit(f'Patches em {pasta} são do mosaico {mosaico}, mas a rodada é '
+                         f'{"_shm" if shm else "v1 (sem _shm)"} ({esperado}). Use --dados com a pasta certa '
+                         'ou corrija o nome da rodada.')
+    return mosaico
+
+
+PATCHES_DIR = pasta_patches(True)   # padrão do notebook/funções sem rodada (harmonizado)
 RUNS_DIR    = Path(os.environ.get('RUNS_DIR', '/srv/almacen/db_images/runs_cnn')).expanduser()
 CANAL_BIN   = 'swir_estimado'     # canal binário: não padroniza nem recebe ruído
 GTB_REF     = 0.84
@@ -430,7 +460,8 @@ def argumentos(lista=None):
                    help='métrica da parada antecipada (ocorrências × fundo); padrão: precisão média')
     a.add_argument('--workers', type=int, default=4)
     a.add_argument('--seed', type=int, default=42)
-    a.add_argument('--dados', default=str(PATCHES_DIR))
+    a.add_argument('--dados', default='', help='pasta dos patches; vazio = $PATCHES_DIR ou pelo nome da '
+                   'rodada (_shm → patches_cnn_shm, sem _shm → patches_cnn)')
     a.add_argument('--saida', default=str(RUNS_DIR))
     a.add_argument('--nome', default='', help='nome da pasta da rodada (ex.: A_pequena_32); '
                    'vazio = <modelo>_<backbone>_<patch>px_<data>')
@@ -442,8 +473,11 @@ def main(lista=None):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     dispositivo = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    X, meta, canais = carregar(args.modelo, Path(args.dados))
     nome = args.nome or f'{args.modelo}_{args.backbone}_{args.patch}px_{datetime.now():%Y%m%d_%H%M}'
+    shm = '_shm' in nome
+    args.dados = str(Path(args.dados).expanduser() if args.dados else pasta_patches(shm))
+    args.mosaico_patches = conferir_mosaico(args.dados, shm)
+    X, meta, canais = carregar(args.modelo, Path(args.dados))
     pasta = Path(args.saida) / nome
     if args.nome and any(pasta.glob('*.pt')):
         raise SystemExit(f'{pasta} já tem modelos (.pt) — use outro --nome ou apague a pasta.')
@@ -561,7 +595,10 @@ def menu_lote():
 
     fila = [(m, b, f'{m}_{BACKBONES[b][0]}_{BACKBONES[b][1]}{suf}') for b in backbones for m in modelos]
     runs = Path(next((extra[i + 1] for i, x in enumerate(extra[:-1]) if x == '--saida'), RUNS_DIR))
-    dados = Path(next((extra[i + 1] for i, x in enumerate(extra[:-1]) if x == '--dados'), PATCHES_DIR))
+    dados = Path(next((extra[i + 1] for i, x in enumerate(extra[:-1]) if x == '--dados'), pasta_patches('_shm' in suf)))
+    conferir_mosaico(dados, '_shm' in suf)
+    if '--dados' not in extra:
+        extra += ['--dados', str(dados)]
     print(f'\nPatches: {dados}\nRodadas: {runs}')
     for m, b, nome in fila:
         feito = any((runs / nome).glob('*.pt'))

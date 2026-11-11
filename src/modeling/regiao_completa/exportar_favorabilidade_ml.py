@@ -28,7 +28,8 @@ Predição (uma task por célula, para cada task ficar pequena)
 Saída
   ImageCollection ASSET_SAIDA, uma imagem por
     <modelo>_<alvo>_<mosaico>_<LxCy>                       (conjunto 'fixas')
-    <modelo>_<alvo>_<mosaico>_<conjunto>[_fcl]_<LxCy>      (conjuntos do JSON)
+    <modelo>_<alvo>_<mosaico>_<conjunto>[_fcl][_tr]_<LxCy> (conjuntos do JSON;
+                                                            _tr = PAPEIS ['treino'])
     banda 'probability' = p × 10000, Int16
     propriedades modelo, alvo, mosaico, conjunto, fundo_modo, celula, features,
                  n_presenca, n_fundo, n_fundo_elegivel, parametros
@@ -36,6 +37,9 @@ Saída
   modelo/alvo/mosaico; com mais de um conjunto no mesmo mosaico, filtrar também
   por 'conjunto'.
   Mapa inteiro: ee.ImageCollection(ASSET_SAIDA).filter(modelo, alvo, mosaico).mosaic()
+  Fundo do treino: PASTA/fundo_ml_<alvo>_<mosaico>[_<conjunto>[_fcl]][_tr] (tabela,
+    uma task por alvo × mosaico × conjunto) = os pontos de fundo sorteados que entraram
+    no treino; caminho na propriedade 'fundo_asset' dos mapas, para o visualizador.
   Registro: registro_favorabilidade_ml_<data>.csv nesta pasta.
 
 Alvos: ALVOS[alvo] = True entram; os outros ficam guardados para depois.
@@ -70,7 +74,8 @@ MOSAICOS    = mx.MOSAICOS                         # único, v1 e sazonal_hm_raza
 ESCALA      = 30
 SEED        = 42
 FATOR_FUNDO = 3          # amostras de fundo = 3 × amostras de presença
-PAPEIS      = None       # None = todos; ['treino'] = sem a validação R2 do fosfato
+PAPEIS      = ['treino'] # None = todos; ['treino'] = sem os pontos de validação do fosfato
+                         # (papel em pontos_referencia, misturado por TROCA_PAPEL); nome ganha '_tr'
 ESCALA_P    = 10000      # probability × 10000 → Int16
 MODELS_DIR  = Path(__file__).resolve().parents[1] / 'models'   # src/modeling/models (compartilhada)
 # nome curto do mosaico nos arquivos do selecao_variaveis_RC.ipynb (variaveis_RC_<sufixo>.json)
@@ -173,7 +178,7 @@ def amostras_treino(mosaico, alvo, features, cl=None):
                     'o asset de amostras mudou depois do notebook?')
     n_fundo = min(FATOR_FUNDO * n_pres, n_eleg)
     fundo = fundo.randomColumn('_sorteio', SEED).sort('_sorteio').limit(n_fundo)
-    return pres.merge(fundo).select(features + ['classe']), n_pres, n_fundo, n_eleg
+    return pres.merge(fundo).select(features + ['classe']), n_pres, n_fundo, n_eleg, fundo
 
 
 def treinar(nome_modelo, amostras, features):
@@ -192,9 +197,33 @@ def features_mosaico(mosaico, features):
     return feats.select(features)
 
 
-def nome_asset(nome_modelo, alvo, mosaico, conjunto, cl, cel):
+def sufixo(conjunto, cl):
     meio = '' if conjunto == 'fixas' else f'_{conjunto}' + ('_fcl' if cl is not None else '')
-    return f'{nome_modelo}_{alvo}_{mosaico}{meio}_{cel}'
+    return meio + ('_tr' if PAPEIS == ['treino'] else '')
+
+
+def nome_asset(nome_modelo, alvo, mosaico, conjunto, cl, cel):
+    return f'{nome_modelo}_{alvo}_{mosaico}{sufixo(conjunto, cl)}_{cel}'
+
+
+def asset_fundo(alvo, mosaico, conjunto, cl):
+    return f'{PASTA}/fundo_ml_{alvo}_{mosaico}{sufixo(conjunto, cl)}'
+
+
+def exportar_fundo(fundo, asset, ativas):
+    """Os pontos de fundo do treino (geometria + cluster/celula) como tabela, uma vez."""
+    nome = asset.rsplit('/', 1)[-1]
+    try:
+        ee.data.getAsset(asset)
+        return 'existe'
+    except ee.EEException:
+        pass
+    if nome in ativas:
+        return 'na fila'
+    props = ['celula', 'cluster'] if fundo.first().propertyNames().contains('cluster').getInfo() else ['celula']
+    task = ee.batch.Export.table.toAsset(collection=fundo.select(props), description=nome, assetId=asset)
+    task.start()
+    return task.id
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -243,9 +272,11 @@ def exportar_conta(conta, modelos, alvos, mosaicos, celulas, grid, linhas, conju
         fundo_modo = 'cluster' if cl is not None else 'aleatorio'
         feats = features_mosaico(mosaico, features)
         for alvo in alvos:
-            amostras, n_pres, n_fundo, n_eleg = amostras_treino(mosaico, alvo, features, cl)
+            amostras, n_pres, n_fundo, n_eleg, fundo = amostras_treino(mosaico, alvo, features, cl)
             log.info(f'{mosaico} · {alvo} · {conjunto}: presença {n_pres}, fundo {n_fundo} '
                      f'(de {n_eleg} elegíveis, {fundo_modo})')
+            a_fundo = asset_fundo(alvo, mosaico, conjunto, cl)
+            log.info(f'  fundo do treino → {a_fundo}: {exportar_fundo(fundo, a_fundo, ativas)}')
             for nome_modelo in modelos:
                 clf = treinar(nome_modelo, amostras, features)
                 mapa = (feats.classify(clf).select(0).multiply(ESCALA_P).round().toInt16()
@@ -261,7 +292,7 @@ def exportar_conta(conta, modelos, alvos, mosaicos, celulas, grid, linhas, conju
                                     'features': ','.join(features), 'n_presenca': n_pres, 'n_fundo': n_fundo,
                                     'n_fundo_elegivel': n_eleg,
                                     'fator_fundo': FATOR_FUNDO, 'papeis': str(PAPEIS), 'escala_p': ESCALA_P,
-                                    'amostras': asset_amostras(mosaico),
+                                    'amostras': asset_amostras(mosaico), 'fundo_asset': a_fundo,
                                     'parametros': str(MODELOS[nome_modelo][1])})
                     task = ee.batch.Export.image.toAsset(
                         image=img, description=nome, assetId=f'{ASSET_SAIDA}/{nome}', region=grid[cel],

@@ -118,13 +118,15 @@ EXTRAS        = ['swir_estimado', 'origem', 'camada', 'normalizacao', 'data']   
 ASSET_PONTOS  = 'projects/mapbiomas-arida/mine/pontos_referencia'
 ALVOS         = ['fosfato', 'carbonato', 'mvt', 'ouro', 'manganes']
 ALVO          = 'fosfato'   # trocado pelo menu
-PAPEIS        = None        # None = todos; ['treino'] = sem os pontos de validação (R2 do fosfato)
+PAPEIS        = ['treino']  # None = todos; ['treino'] = sem os pontos de validação do fosfato
+                            # (TROCA_PAPEL do preparar_pontos_referencia). As amostras (opção 1)
+                            # levam todos os papéis; o filtro vale na validação e no mapa.
 GRID_ASSET    = 'projects/mapbiomas-arida/mine/grid_irece_5x5_solape100'
 PASTA_SAIDA   = 'projects/mapbiomas-arida/mine'
 MODELS_DIR    = Path(__file__).resolve().parents[1] / 'models'   # src/modeling/models (compartilhada)
 # contas que recebem as tasks, cada uma no próprio projeto
 # (caatinga02 → mapbiomas-caatinga-cloud02, caatinga05 → mapbiomas-caatinga-cloud05)
-CONTAS        = ['caatinga02', 'caatinga05']
+CONTAS        = ['caatinga02',]  # 'caatinga05'
 
 BANDAS = ['B01', 'B02', 'B3N',
           'B04', 'B05', 'B06', 'B07', 'B08', 'B09',
@@ -430,6 +432,7 @@ def ativar(conta: str) -> None:
     if gee_tools.active_user() != conta:
         gee_tools.switch_user(conta)
     projeto = get_project_from_account(conta)
+    projeto = 'mapbiomas-brazil'
     ee.Initialize(project=projeto)
     log.info(f'Conta GEE: {conta} (projeto {projeto})')
 

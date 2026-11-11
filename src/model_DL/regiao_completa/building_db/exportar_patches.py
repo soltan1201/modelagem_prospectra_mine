@@ -47,7 +47,9 @@ Canais (baixados uma vez, gravados num arquivo por modelo)
   VNIR (15 m) agregado pela média para 30 m; grade alinhada ao mosaico v1.
   Pixel sem dado = NaN.
 
-Saídas (PASTA_SAIDA = /srv/almacen/db_images/patches_cnn ou $PATCHES_DIR)
+Saídas (PASTA_SAIDA = $PATCHES_DIR, ou /srv/almacen/db_images/patches_cnn_shm no mosaico
+harmonizado e patches_cnn no v1 — pastas separadas, como tiles_cnn/tiles_cnn_shm; o
+divisao.json grava MOSAICO e o script não escreve numa pasta de outro mosaico)
   modelo_A/patches_<LxCy>.npz   X (N, 16, 64, 64) float16
   modelo_B1/patches_<LxCy>.npz  X (N, 15, 64, 64) float16
      os dois com: canais, origem_patch (N, 64, 64), y, peso, origem_amostra,
@@ -122,11 +124,13 @@ MOSAICO_FAV   = MOSAICO
 ALVO          = 'fosfato'
 ASSET_PONTOS  = MINE + 'pontos_referencia'
 ASSET_GRID    = MINE + 'grid_irece_5x5'               # sem solape
-# servidor: /srv/almacen/db_images/patches_cnn; outra pasta com a variável de
-# ambiente PATCHES_DIR (ex.: PATCHES_DIR=~/dados/patches python building_db/exportar_patches.py)
-PASTA_SAIDA   = Path(os.environ.get('PATCHES_DIR', '/srv/almacen/db_images/patches_cnn')).expanduser()
+# servidor: /srv/almacen/db_images/patches_cnn_shm (harmonizado) ou patches_cnn (v1); outra
+# pasta com a variável de ambiente PATCHES_DIR (ex.: PATCHES_DIR=~/dados/patches python ...)
+SUFIXO_MOSAICO = '_shm' if MOSAICO == 'aster-mosaico-final_sazonal_hm_razao' else ''
+PATCHES_NOME  = 'patches_cnn' + SUFIXO_MOSAICO
+PASTA_SAIDA   = Path(os.environ.get('PATCHES_DIR', '/srv/almacen/db_images/' + PATCHES_NOME)).expanduser()
 # destino 'drive': remote:pasta do rclone (variável de ambiente PATCHES_REMOTO)
-PATCHES_REMOTO = os.environ.get('PATCHES_REMOTO', 'gdrive:prospectra/patches_cnn')
+PATCHES_REMOTO = os.environ.get('PATCHES_REMOTO', 'gdrive:prospectra/' + PATCHES_NOME)
 
 PATCH         = 64          # px
 RES_15M       = 0.00013474729261792824                # grau, pixel dos mosaicos finais (v1 e sazonal, mesma grade)
@@ -542,6 +546,20 @@ def tiles_dir(shm=None):
     return Path(TILES_BASE + ('_shm' if (eh_shm() if shm is None else shm) else ''))
 
 
+def conferir_mosaico_da_pasta():
+    """Para se PASTA_SAIDA já tem patches de outro mosaico (MOSAICO gravado no divisao.json):
+    o download pula os .npz que existem e misturaria v1 e harmonizado na mesma pasta."""
+    arq = PASTA_SAIDA / 'divisao.json'
+    if not arq.exists():
+        if any(PASTA_SAIDA.glob('modelo_*/patches_*.npz')):
+            log.warning(f'{PASTA_SAIDA} tem .npz sem divisao.json: não dá para saber o mosaico deles.')
+        return
+    antigo = json.loads(arq.read_text()).get('parametros', {}).get('MOSAICO')
+    if antigo and antigo != MOSAICO:
+        raise SystemExit(f'{PASTA_SAIDA} tem patches do mosaico {antigo}; aqui MOSAICO = {MOSAICO}. '
+                         f'Use outra pasta (PATCHES_DIR) ou renomeie a existente.')
+
+
 def pasta_passagem(variavel, nome):
     """Pasta local do destino 'drive': $variavel se definida; senão ~/.cache/prospectra/<nome>
     (só guarda arquivos até subirem, então serve em qualquer máquina)."""
@@ -600,9 +618,10 @@ def main():
         if (input('Destino [1]: ').strip() or '1') == '2':
             remoto = PATCHES_REMOTO.rstrip('/')
             checar_rclone(remoto)
-            PASTA_SAIDA = pasta_passagem('PATCHES_DIR', 'patches_cnn')
+            PASTA_SAIDA = pasta_passagem('PATCHES_DIR', PATCHES_NOME)
     PASTA_SAIDA.mkdir(parents=True, exist_ok=True)
-    print(f'Pasta local: {PASTA_SAIDA}')
+    print(f'Pasta local: {PASTA_SAIDA} (mosaico {MOSAICO})')
+    conferir_mosaico_da_pasta()
     if acao == '3':
         if not apagar_patches(remoto):
             return

@@ -9,8 +9,10 @@ computador.
 
 Entradas (as mesmas variáveis dos outros scripts)
   RUNS_DIR     runs_cnn/<rodada>/mapas_passo<k>/p_<LxCy>.tif   (UInt16, p × 10000, 0 = sem dado)
-  TILES_DIR    tiles_cnn/canais_<A|B1>/<LxCy>/<LxCy>_r<i>c<j>.tif   (float32, bandas com nome)
-  PATCHES_DIR  patches_cnn/indice_patches.csv   (ocorrências: lon, lat, papel, p_rf, p_gtb)
+  TILES_DIR    tiles_cnn[_shm]/canais_<A|B1>/<LxCy>/<LxCy>_r<i>c<j>.tif   (float32, bandas com nome)
+  PATCHES_DIR  patches_cnn[_shm]/indice_patches.csv   (ocorrências: lon, lat, papel, p_rf, p_gtb)
+  Sem TILES_DIR/PATCHES_DIR, a pasta segue a rodada escolhida: _shm no nome → *_shm
+  (mosaico harmonizado), sem _shm → tiles_cnn / patches_cnn (v1).
 
 Instalar (uma vez, no ambiente da CNN)
   conda activate py_DL
@@ -42,9 +44,22 @@ from rasterio.merge import merge
 from rasterio.transform import Affine, rowcol
 
 RUNS_DIR = Path(os.environ.get('RUNS_DIR', '/srv/almacen/db_images/runs_cnn')).expanduser()
-# canais do fundo RGB/índices: harmonizado (tiles_cnn_shm) por padrão; v1: TILES_DIR=.../tiles_cnn
-TILES_DIR = Path(os.environ.get('TILES_DIR', '/srv/almacen/db_images/tiles_cnn_shm')).expanduser()
-PATCHES_DIR = Path(os.environ.get('PATCHES_DIR', '/srv/almacen/db_images/patches_cnn')).expanduser()
+BASE_DADOS = '/srv/almacen/db_images'
+
+
+def pasta_dados(variavel, nome, shm):
+    """$variavel se definida; senão <BASE_DADOS>/<nome>_shm (rodada _shm) ou <nome> (v1)."""
+    if os.environ.get(variavel):
+        return Path(os.environ[variavel]).expanduser()
+    return Path(f'{BASE_DADOS}/{nome}' + ('_shm' if shm else ''))
+
+
+def tiles_dir(shm):
+    return pasta_dados('TILES_DIR', 'tiles_cnn', shm)
+
+
+def patches_dir(shm):
+    return pasta_dados('PATCHES_DIR', 'patches_cnn', shm)
 
 AREA_TODA = 'Área toda'
 
@@ -123,17 +138,17 @@ def ler_p(rodada, passo, area, max_lado):
     return p / 10000, tr, (esq, inf, dir_, sup)
 
 
-def pasta_canais(modelo):
-    return TILES_DIR / f'canais_{modelo}'
+def pasta_canais(modelo, shm):
+    return tiles_dir(shm) / f'canais_{modelo}'
 
 
-def modelos_com_canais():
-    return [m for m in ('B1', 'A') if pasta_canais(m).is_dir()]
+def modelos_com_canais(shm):
+    return [m for m in ('B1', 'A') if pasta_canais(m, shm).is_dir()]
 
 
 @st.cache_data(max_entries=4)
-def nomes_canais(modelo):
-    primeiro = next(pasta_canais(modelo).glob('*/*_r*c*.tif'), None)
+def nomes_canais(modelo, shm):
+    primeiro = next(pasta_canais(modelo, shm).glob('*/*_r*c*.tif'), None)
     if primeiro is None:
         return []
     with rasterio.open(primeiro) as d:
@@ -141,14 +156,14 @@ def nomes_canais(modelo):
 
 
 @st.cache_data(show_spinner='Lendo canais dos pedaços…', max_entries=32)
-def ler_canais(modelo, celula, canais, coefs, forma):
+def ler_canais(modelo, shm, celula, canais, coefs, forma):
     """Canais pedidos (C, H, W) na mesma grade do mapa de p (média dos pixels de 30 m).
     coefs = tuple(transform) do mapa de p (o Affine não é hashável para o cache)."""
     transform = Affine(*coefs[:6])
-    arqs = sorted((pasta_canais(modelo) / celula).glob(f'{celula}_r*c*.tif'))
+    arqs = sorted((pasta_canais(modelo, shm) / celula).glob(f'{celula}_r*c*.tif'))
     if not arqs:
         return None
-    nomes = nomes_canais(modelo)
+    nomes = nomes_canais(modelo, shm)
     indices = [nomes.index(c) + 1 for c in canais]
     a, e = transform.a, transform.e
     esq, sup = transform.c, transform.f
@@ -167,9 +182,9 @@ def ler_canais(modelo, celula, canais, coefs, forma):
 
 
 @st.cache_data(max_entries=2)
-def ocorrencias():
+def ocorrencias(shm):
     """Uma linha por ocorrência de fosfato (o ponto, sem os centros deslocados)."""
-    csv = PATCHES_DIR / 'indice_patches.csv'
+    csv = patches_dir(shm) / 'indice_patches.csv'
     if not csv.exists():
         return pd.DataFrame(columns=['codigo_obj', 'papel', 'lon', 'lat', 'p_rf', 'p_gtb'])
     df = pd.read_csv(csv)
@@ -303,20 +318,24 @@ def main():
         st.warning('Mapa não encontrado.')
         return
     p, tr, limites = lido
+    shm = '_shm' in rodada          # pastas de canais e patches do mesmo mosaico da rodada
+    with st.sidebar:
+        st.caption(f'Mosaico: {"sazonal harmonizado" if shm else "v1"} · canais {tiles_dir(shm)} · '
+                   f'ocorrências {patches_dir(shm)}')
     lon, lat = eixos(tr, p.shape)
     p_vis = np.where(p >= limiar, p, np.nan) if mascarar else p
 
     # --- painel da direita ---------------------------------------------------
     painel, titulo_dir = None, ''
     if tipo in ('RGB artificial', 'Canal / índice'):
-        modelos = modelos_com_canais()
+        modelos = modelos_com_canais(shm)
         if not modelos:
-            st.error(f'Sem pedaços de canais em {TILES_DIR} (baixar_tiles.py).')
+            st.error(f'Sem pedaços de canais em {tiles_dir(shm)} (baixar_tiles.py).')
             return
         with st.sidebar:
             modelo = st.selectbox('Canais do modelo', modelos,
                                   help='B1 = log das bandas + emissividade; A = índices espectrais')
-            nomes = [n for n in nomes_canais(modelo) if n != 'swir_estimado'] + ['swir_estimado']
+            nomes = [n for n in nomes_canais(modelo, shm) if n != 'swir_estimado'] + ['swir_estimado']
             if tipo == 'RGB artificial':
                 comps = {k: v for k, v in COMPOSICOES.get(modelo, {}).items() if all(c in nomes for c in v)}
                 escolha = st.selectbox('Composição', list(comps) + [PERSONALIZADO])
@@ -329,9 +348,9 @@ def main():
             else:
                 canais = (st.selectbox('Canal', nomes),)
                 escala = st.selectbox('Paleta', ['Viridis', 'Cividis', 'Turbo', 'RdBu_r', 'Greys'])
-        x = ler_canais(modelo, area, canais, tuple(tr), p.shape)
+        x = ler_canais(modelo, shm, area, canais, tuple(tr), p.shape)
         if x is None:
-            st.error(f'Sem pedaços da célula {area} em {pasta_canais(modelo)}.')
+            st.error(f'Sem pedaços da célula {area} em {pasta_canais(modelo, shm)}.')
             return
         if tipo == 'RGB artificial':
             painel = {'tipo': 'rgb', 'rgb': realce(x, pmin, pmax), 'canais': canais,
@@ -361,7 +380,7 @@ def main():
     # --- ocorrências na área, com p da CNN no pixel ---------------------------
     oc = None
     if mostrar_oc:
-        todas = ocorrencias()
+        todas = ocorrencias(shm)
         dentro = todas[(todas.lon >= limites[0]) & (todas.lon <= limites[2])
                        & (todas.lat >= limites[1]) & (todas.lat <= limites[3])].copy()
         if len(dentro):

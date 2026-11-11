@@ -11,7 +11,7 @@ Saída
                 (só em acervo_cprm/ocorrencias_fosfato); demais alvos 'cprm'
     grupo       fosfato: bacia_irece / leste_outros / norte; demais ''
     papel       fosfato: 'treino' (bacia_irece) ou 'validacao' (fora da
-                bacia, R2); demais 'treino'
+                bacia), corrigido por TROCA_PAPEL; demais 'treino'
     subst, subst_original, toponimia, status, serie, dist_irece
   CSV_SAIDA    a mesma tabela com lon/lat.
 
@@ -23,6 +23,13 @@ Regras
   - demais alvos: acervo_cprm/recursos_minerais, só na área (na_area = 1),
     'subst' padronizada por SUBST_ALVO (as grafias variam: 'Mn', 'Manganês',
     'Manganês (Mn)'…).
+  - fosfato: só os pontos dentro da grid (ASSET_GRID); os de fora não têm
+    mosaico nem mapa e só enfraqueciam a validação.
+  - fosfato: TROCA_PAPEL mistura treino e validação. Pela regra do grupo, o
+    treino ficava todo na bacia e a validação toda no leste/norte, com geologia
+    e cena diferentes; o modelo perdia desempenho por isso, não por não
+    reconhecer fosfato. Uns poucos pontos de cada lado trocam de papel, escolhidos
+    dentro dos aglomerados, para cada conjunto ter vizinhos do outro.
   - Pontos do mesmo alvo a ≤ DIST_DUP_M viram um só (séries diferentes do
     acervo repetem a ocorrência); fica o primeiro (antigo+cprm antes de cprm).
 
@@ -48,11 +55,34 @@ ASSET_FOSFATO_OLD = MINE + 'pontos_fosfato'
 ASSET_FOSFATO_CP  = MINE + 'acervo_cprm/ocorrencias_fosfato'
 ASSET_RECMIN      = MINE + 'acervo_cprm/recursos_minerais'
 ASSET_SAIDA       = MINE + 'pontos_referencia'
+ASSET_GRID        = MINE + 'grid_irece_5x5'      # fosfato fora da grid sai
 CSV_SAIDA         = Path(__file__).resolve().parents[2] / 'Dados' / 'referencias' / 'pontos_referencia.csv'
 
 DIST_PAR_M = 250     # antigo × CPRM: mesmo ponto
 DIST_DUP_M = 500     # mesmo alvo: duplicata (= BUFFER_M do Maxent)
 BASE_ID    = 900000  # ids novos (não colidem com CODIGO_OBJ do SGB)
+
+# fosfato: CODIGO_OBJ → papel, por cima da regra do grupo (treino = bacia_irece).
+# 2 da bacia vão para validação, 11 do leste e 2 do norte vão para treino; cada um
+# tem vizinhos que ficam no outro conjunto. Resultado dentro da grid: treino 24,
+# validação 13 (bacia 11/2, leste 11/10, norte 2/1).
+TROCA_PAPEL = {
+    18832: 'validacao',   # bacia, ao lado de 18830 (treino)
+    18827: 'validacao',   # bacia, ao lado de 18825/18828 (treino)
+    900008: 'treino',     # leste, aglomerado sul (−12,05), com 900007/900010
+    18854: 'treino',      # leste, −11,94, com 900012
+    18849: 'treino',      # leste, −11,76, com 18850
+    18845: 'treino',      # leste, −11,55, com 18840/18841/18844
+    18846: 'treino',      # leste, −11,49, com 18839/18847
+    900011: 'treino',     # leste, −11,24, com 18842/18848
+    900010: 'treino',     # leste, aglomerado sul (−12,08), com 900007/900009
+    18857: 'treino',      # leste, −11,88, com 900012
+    18843: 'treino',      # leste, −11,60, com 18844
+    18840: 'treino',      # leste, −11,55, com 18841/18838
+    18847: 'treino',      # leste, −11,45, com 18839
+    18823: 'treino',      # norte (−9,67), com 18824 (validação)
+    18853: 'treino',      # norte (−9,48), com 18824 (validação)
+}
 
 # subst padronizada (sem o sufixo ' (xx)', minúsculas) → alvo
 SUBST_ALVO = {
@@ -118,11 +148,23 @@ def pontos_fosfato():
                        'subst_original': p['subst'], 'dist_irece': p['dist_irece']})
     linhas.sort(key=lambda l: l['fonte'] != 'antigo+cprm')
     for l in linhas:
-        l.update(alvo='fosfato', subst='fosforo',
-                 papel='treino' if l['grupo'] == 'bacia_irece' else 'validacao')
+        papel = 'treino' if l['grupo'] == 'bacia_irece' else 'validacao'
+        l.update(alvo='fosfato', subst='fosforo', papel=TROCA_PAPEL.get(l['CODIGO_OBJ'], papel))
+    falta = set(TROCA_PAPEL) - {l['CODIGO_OBJ'] for l in linhas}
+    if falta:
+        log.warning(f'TROCA_PAPEL: CODIGO_OBJ que não existem no fosfato: {sorted(falta)}')
     log.info(f'fosfato: {len(antigos)} antigos ({len(usados)} com par na CPRM a ≤ {DIST_PAR_M} m) + '
              f'{len(cprm)} CPRM')
     return linhas, BASE_ID + n_novo
+
+
+def na_grid(linhas):
+    """Só os pontos dentro do retângulo da grid (a grid é um retângulo 5 × 5)."""
+    anel = ee.FeatureCollection(ASSET_GRID).geometry().bounds().coordinates().get(0).getInfo()
+    lons, lats = [c[0] for c in anel], [c[1] for c in anel]
+    dentro = [l for l in linhas if min(lons) <= l['lon'] <= max(lons) and min(lats) <= l['lat'] <= max(lats)]
+    log.info(f'fosfato na grid: {len(dentro)} de {len(linhas)}')
+    return dentro
 
 
 def pontos_recmin(prox_id):
@@ -148,8 +190,9 @@ def para_fc(df):
 
 
 def main():
-    ee.Initialize(project='mapbiomas-brazil')   # cota de tasks do projeto; destino continua em mapbiomas-arida
+    ee.Initialize(project='mapbiomas-brazil')   # mapbiomas-brazil   cota de tasks do projeto; destino continua em mapbiomas-arida
     fos, prox = pontos_fosfato()
+    fos = na_grid(fos)
     todas = fos + pontos_recmin(prox)
     antes = pd.Series([l['alvo'] for l in todas]).value_counts()
     df = pd.DataFrame(tirar_duplicatas(todas))

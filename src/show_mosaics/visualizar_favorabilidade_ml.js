@@ -4,8 +4,11 @@
 // Fonte: projects/mapbiomas-arida/mine/favorabilidade_ml
 //   uma imagem por <modelo>_<alvo>_<mosaico>_<LxCy>; banda 'probability' =
 //   p × 10000 (Int16). Aqui p volta para 0–1.
-//   Treino: todos os pontos do alvo + fundo 3 × presença (n_presenca,
-//   n_fundo nas propriedades) → p NÃO é a chance real de ocorrência; vale
+//   Versões (seletor "Versão"): conjunto de variáveis × fundo_modo, ex. selecao · cluster =
+//   <modelo>_<alvo>_<mosaico>_selecao_fcl_tr_<LxCy> (exportar_favorabilidade_ml.py).
+//   Treino: pontos do alvo (todos, ou só papel = treino: propriedade 'papeis',
+//   seletor "Pontos") + fundo 3 × presença (n_presenca, n_fundo nas propriedades;
+//   pontos do fundo na tabela 'fundo_asset') → p NÃO é a chance real de ocorrência; vale
 //   para ordenar a área. Com 1 presença : 3 fundo no treino, p ≈ 0,25 é o
 //   "neutro" do modelo.
 //
@@ -39,13 +42,42 @@ var VIS_P   = {min: 0.009, max: 0.92, palette: PAL_P};     // mapas de p (RF e G
 var VIS_DIF = {min: -0.5, max: 0.5, palette: PAL_DIV};     // diferença GTB − RF
 var COR_LIMIAR = ['555555', '17becf', 'ff00ff'];           // só RF, só GTB, os dois
 
+// Mosaico harmonizado: mesmas faixas do apresentacao_seco_x_harmonizado.js
+// (faixa do original TOA × 1000 multiplicada pelo ganho mediano original → harmonizado).
+var FAIXA = {
+  B01: [49, 176], B02: [51, 204], B3N: [60, 330], B04: [107, 362], B05: [77, 232],
+  B06: [75, 234], B07: [71, 228], B08: [45, 168], B09: [34, 115]
+};
+var GANHO = {B01: 0.69, B02: 0.82, B3N: 1.06, B04: 0.935, B05: 0.935, B06: 0.935,
+             B07: 0.935, B08: 0.935, B09: 0.935};
+function visHarm(bandas) {
+  return {bands: bandas,
+          min: bandas.map(function (b) { return FAIXA[b][0] * GANHO[b]; }),
+          max: bandas.map(function (b) { return FAIXA[b][1] * GANHO[b]; })};
+}
+
 // ----------------------------------------------------------------------------
 // Dados
 // ----------------------------------------------------------------------------
-function mapaP(modelo, alvo, mosaico) {
-  return COL.filter(ee.Filter.eq('modelo', modelo))
-            .filter(ee.Filter.eq('alvo', alvo))
+// mapas do alvo × mosaico × papéis do treino (imagens antigas sem 'papeis' = 'None')
+function subColBase(alvo, mosaico) {
+  return COL.filter(ee.Filter.eq('alvo', alvo))
             .filter(ee.Filter.eq('mosaico', mosaico))
+            .filter(ee.Filter.eq('papeis', selPapeis.getValue()));
+}
+
+// + versão escolhida: conjunto de variáveis × fundo_modo ('(todas)' = sem filtro, mistura versões)
+var TODAS = '(todas)';
+function subCol(alvo, mosaico) {
+  var col = subColBase(alvo, mosaico);
+  var v = selVersao.getValue();
+  if (!v || v === TODAS) { return col; }
+  var partes = v.split(' · ');
+  return col.filter(ee.Filter.eq('conjunto', partes[0])).filter(ee.Filter.eq('fundo_modo', partes[1]));
+}
+
+function mapaP(modelo, alvo, mosaico) {
+  return subCol(alvo, mosaico).filter(ee.Filter.eq('modelo', modelo))
             .mosaic().divide(10000).rename(modelo);
 }
 
@@ -65,6 +97,13 @@ var selAlvo = ui.Select({items: ['fosfato'], value: 'fosfato', style: {stretch: 
 var selMos = ui.Select({items: Object.keys(MOSAICOS), value: 'aster-mosaico-final_sazonal_hm_razao', style: {stretch: 'horizontal'}});
 painel.add(ui.Panel([ui.Label('Alvo', {fontSize: '12px'}), selAlvo], ui.Panel.Layout.flow('horizontal')));
 painel.add(ui.Panel([ui.Label('Mosaico', {fontSize: '12px'}), selMos], ui.Panel.Layout.flow('horizontal')));
+// papeis = pontos usados no treino: "['treino']" (validação fora) ou 'None' (todos)
+var selPapeis = ui.Select({items: ["['treino']", 'None'], value: "['treino']", style: {stretch: 'horizontal'}});
+painel.add(ui.Panel([ui.Label('Pontos no treino', {fontSize: '12px'}), selPapeis], ui.Panel.Layout.flow('horizontal')));
+// versão = conjunto · fundo_modo (preenchida pelo que existe no alvo × mosaico × papéis)
+var selVersao = ui.Select({items: [TODAS], value: TODAS, style: {stretch: 'horizontal'}});
+painel.add(ui.Panel([ui.Label('Versão', {fontSize: '12px'}), selVersao], ui.Panel.Layout.flow('horizontal')));
+var VERSAO_PREFERIDA = 'selecao · cluster';
 var lblInfo = ui.Label('', {fontSize: '11px', whiteSpace: 'pre-wrap'});
 painel.add(lblInfo);
 
@@ -72,18 +111,38 @@ painel.add(lblInfo);
 ee.Dictionary({
   alvos: COL.aggregate_array('alvo').distinct(),
   mosaicos: COL.aggregate_array('mosaico').distinct(),
+  papeis: COL.aggregate_array('papeis').distinct(),
 }).evaluate(function (r) {
   selAlvo.items().reset(r.alvos);
   selMos.items().reset(r.mosaicos);
+  selPapeis.items().reset(r.papeis);
+  if (r.papeis.indexOf(selPapeis.getValue()) < 0) { selPapeis.setValue(r.papeis[0], false); }
   if (r.alvos.indexOf(selAlvo.getValue()) < 0) { selAlvo.setValue(r.alvos[0], false); }
   if (r.mosaicos.indexOf(selMos.getValue()) < 0) { selMos.setValue(r.mosaicos[0], false); }
-  desenhar();
+  atualizarVersoes();
 });
+
+// lista as versões (conjunto · fundo_modo) do alvo × mosaico × papéis e redesenha
+function atualizarVersoes() {
+  var col = subColBase(selAlvo.getValue(), selMos.getValue());
+  col.map(function (im) {
+    return ee.Feature(null, {v: ee.String(ee.Algorithms.If(im.get('conjunto'), im.get('conjunto'), '?'))
+                                  .cat(' · ')
+                                  .cat(ee.String(ee.Algorithms.If(im.get('fundo_modo'), im.get('fundo_modo'), '?')))});
+  }).aggregate_array('v').distinct().evaluate(function (vs, err) {
+    vs = (vs || []).filter(function (v) { return v.indexOf('?') < 0; });
+    var atualV = selVersao.getValue();
+    selVersao.items().reset(vs.concat([TODAS]));
+    var v = vs.indexOf(atualV) >= 0 ? atualV : (vs.indexOf(VERSAO_PREFERIDA) >= 0 ? VERSAO_PREFERIDA : (vs[0] || TODAS));
+    selVersao.setValue(v, false);
+    desenhar();
+  });
+}
 
 // resumo do treino do alvo × mosaico escolhido (imagens antigas podem não ter
 // 'features', 'conjunto' ou 'fundo_modo' — mostra '?' em vez de quebrar)
 function atualizarInfo(alvo, mos) {
-  var sub = COL.filter(ee.Filter.eq('alvo', alvo)).filter(ee.Filter.eq('mosaico', mos));
+  var sub = subCol(alvo, mos);
   lblInfo.setValue('carregando…');
   ee.Dictionary({
     n: sub.aggregate_histogram('modelo'),
@@ -95,7 +154,9 @@ function atualizarInfo(alvo, mos) {
     if (err) { lblInfo.setValue('Erro: ' + err); return; }
     var p = r.params || {};
     var nVars = p.features ? p.features.split(',').length : '?';
+    var faltam = MODELOS.filter(function (m) { return !(r.n || {})[m]; });
     lblInfo.setValue('Células na coleção: ' + JSON.stringify(r.n) +
+                     (faltam.length ? '\n⚠ sem mapa ' + faltam.join(', ') + ' nesta versão (exportação pendente?)' : '') +
                      '\nConjuntos: ' + (r.conjuntos.length ? r.conjuntos.join(', ') : '?') +
                      (r.conjuntos.length > 1 ? '  ⚠ misturados na mesma camada' : '') +
                      '\nTreino: presença ' + (p.n_presenca || '?') + ', fundo ' + (p.n_fundo || '?') +
@@ -103,7 +164,7 @@ function atualizarInfo(alvo, mos) {
   });
 }
 
-var sldLimiar = ui.Slider({min: 0, max: 1, step: 0.01, value: 0.92, style: {stretch: 'horizontal'}});
+var sldLimiar = ui.Slider({min: 0, max: 1, step: 0.01, value: 0.95, style: {stretch: 'horizontal'}});
 painel.add(ui.Label('Limiar para "área favorável"', {fontSize: '12px', fontWeight: 'bold', margin: '8px 0 0 8px'}));
 painel.add(sldLimiar);
 var lblArea = ui.Label('', {fontSize: '11px', whiteSpace: 'pre-wrap'});
@@ -137,13 +198,27 @@ function desenhar() {
   Map.addLayer(ee.FeatureCollection([ee.Feature(regiao)])
                  .style({color: '000000', width: 2, fillColor: '00000000'}), {}, 'contorno da área');
   var base = ee.ImageCollection(MOSAICOS[mos]).mosaic();
-  Map.addLayer(base, {bands: ['B04', 'B06', 'B08'], min: 55, max: 362}, mos + ' — SWIR', false);
+  if (mos.indexOf('_hm_') >= 0) {
+    Map.addLayer(base, visHarm(['B3N', 'B02', 'B01']), mos + ' — VNIR cor falsa (3N-2-1)', false);
+    Map.addLayer(base, visHarm(['B04', 'B06', 'B08']), mos + ' — SWIR (4-6-8)', false);
+  } else {
+    Map.addLayer(base, {bands: ['B04', 'B06', 'B08'], min: 55, max: 362}, mos + ' — SWIR', false);
+  }
   MODELOS.forEach(function (m, k) {
     Map.addLayer(img.select(m), VIS_P, alvo + ' — p ' + m, k === 1);
   });
   Map.addLayer(img.select('GTB').subtract(img.select('RF')), VIS_DIF, 'diferença GTB − RF', false);
+  // fundo do treino (exportar_favorabilidade_ml.py: sorteio 3 × presença entre os elegíveis,
+  // ou só nos clusters_treino quando fundo_modo = cluster); a tabela vem de 'fundo_asset'
+  subCol(alvo, mos).aggregate_first('fundo_asset').evaluate(function (a) {
+    if (!a) { print('Sem fundo_asset nos mapas (exportados antes da tabela de fundo).'); return; }
+    var fundo = ee.FeatureCollection(a).style({color: '000000', pointShape: 'circle', pointSize: 2,
+                                               width: 0.5, fillColor: 'ffff00'});
+    Map.layers().add(ui.Map.Layer(fundo, {}, 'fundo do treino (amarelo)', false));
+  });
+  // ocorrências: triângulo para baixo (pin), vermelho treino, ciano validação
   Map.addLayer(PONTOS.filter(ee.Filter.eq('alvo', alvo)).map(function (f) {
-    return f.set('estilo', {color: '000000', pointShape: 'star5', pointSize: 7, width: 1,
+    return f.set('estilo', {color: '000000', pointShape: 'triangle_down', pointSize: 8, width: 1,
                             fillColor: ee.Algorithms.If(ee.String(f.get('papel')).equals('treino'), 'ff0000', '00ffff')});
   }).style({styleProperty: 'estilo'}), {}, 'pontos ' + alvo + ' (vermelho treino, ciano validação)');
   Map.addLayer(ee.Image().paint(GRID, 0, 1), {palette: 'ffffff'}, 'grid', false);
@@ -175,8 +250,10 @@ function atualizarLimiar() {
     });
 }
 sldLimiar.onChange(atualizarLimiar);
-selAlvo.onChange(desenhar);
-selMos.onChange(desenhar);
+selAlvo.onChange(atualizarVersoes);
+selMos.onChange(atualizarVersoes);
+selPapeis.onChange(atualizarVersoes);
+selVersao.onChange(desenhar);
 
 // ----------------------------------------------------------------------------
 // Histogramas e curva área × limiar
@@ -307,8 +384,8 @@ function linhaEscala(vis) {
 }
 
 function itemCor(cor, texto, forma) {
-  var simbolo = forma === 'estrela'
-    ? ui.Label('★', {color: '#' + cor, fontSize: '15px', margin: '0 6px 0 4px', padding: '0'})
+  var simbolo = forma === 'triangulo'
+    ? ui.Label('▼', {color: '#' + cor, fontSize: '15px', margin: '0 6px 0 4px', padding: '0'})
     : ui.Label('', {backgroundColor: '#' + cor, padding: '7px', margin: '2px 6px 2px 4px',
                     border: '1px solid #888888'});
   return ui.Panel([simbolo, ui.Label(texto, {fontSize: FS_LEG, margin: '3px 0'})],
@@ -331,8 +408,8 @@ legenda.add(itemCor(COR_LIMIAR[0], 'só RF'));
 legenda.add(itemCor(COR_LIMIAR[1], 'só GTB'));
 legenda.add(itemCor(COR_LIMIAR[2], 'RF e GTB'));
 legenda.add(titulo('Ocorrências'));
-legenda.add(itemCor('ff0000', 'treino (bacia)', 'estrela'));
-legenda.add(itemCor('00ffff', 'validação', 'estrela'));
+legenda.add(itemCor('ff0000', 'treino', 'triangulo'));
+legenda.add(itemCor('00ffff', 'validação', 'triangulo'));
 Map.add(legenda);
 
 var chkLegenda = ui.Checkbox('Mostrar legenda no mapa', true);
