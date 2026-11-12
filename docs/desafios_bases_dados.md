@@ -10,7 +10,7 @@ var area_IRECE = ee.Geometry.Rectangle([-42.31762892604435, -12.359936623152336,
                                         -41.2382221877631,  -10.5375816299746]);
 ```
 
-A área também está em `src/modeling/area_reduzida/novas_areas_estudo.js`. Ela toca as células
+A área também está em `src/modeling/area_reduzida/js/novas_areas_estudo.js`. Ela toca as células
 L2C3, L2C4, L3C3 e L3C4 da grid. O mosaico `aster-mosaico-final` (v1) cobre a
 área inteira.
 

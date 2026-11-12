@@ -81,7 +81,8 @@ no .251 em `sudo journalctl -u sshd -n 20`.
 
 ## 3. Copiar código, imagens e modelos (no .250, dentro de um `tmux`)
 
-O `tmux` mantém o comando rodando quando o `ssh` cai ou o terminal fecha.
+O `tmux` mantém o comando rodando quando o `ssh` cai ou o terminal fecha. Mais
+comandos (listar o que roda, ver a saída sem entrar, sessões do .251): seção 7.
 
 | O quê | Comando |
 |---|---|
@@ -201,3 +202,66 @@ for r in /srv/almacen/db_images/runs_cnn/*/mapas_passo3; do
   echo "$r: $(ls $r/p_L*C*.tif 2>/dev/null | wc -l)"
 done
 ```
+
+## 7. Trabalhar com o tmux
+
+Resumo da seção 3, com o que serve para acompanhar várias rodadas nos dois servidores.
+Uma sessão por tarefa, com o nome da rodada (`B1_effv2s_64_shm`, `juntar`, `copia`),
+facilita saber o que roda onde.
+
+### Ver o que está rodando
+
+```bash
+tmux ls                                   # sessões deste servidor
+ssh geoserverI5 tmux ls                   # sessões do .251, sem entrar nele
+
+# comando que roda agora em cada sessão (python = ainda trabalhando; bash = terminou)
+tmux list-panes -a -F '#{session_name}  #{pane_current_command}  #{pane_current_path}'
+
+# últimas 20 linhas da saída de uma sessão, sem entrar nela
+tmux capture-pane -p -t B1_effv2s_64_shm | tail -20
+ssh geoserverI5 "tmux capture-pane -p -t predict | tail -20"
+
+# todas as sessões de uma vez
+for s in $(tmux ls -F '#S'); do echo "== $s"; tmux capture-pane -p -t "$s" | grep -v '^$' | tail -3; done
+```
+
+`tmux ls` mostra `(attached)` na sessão aberta em algum terminal. Uma sessão listada
+continua viva mesmo que o comando dentro já tenha terminado; o `list-panes` (coluna
+`bash`) ou o `capture-pane` dizem se acabou.
+
+Processos e GPU, para cruzar com as sessões:
+
+```bash
+pgrep -af 'inferir_cnn|treinar_cnn|juntar_mapas|preencher_bordas'
+nvidia-smi --query-compute-apps=pid,used_memory --format=csv
+```
+
+### Criar, entrar e sair
+
+| O quê | Comando |
+|---|---|
+| Criar e entrar | `tmux new -s B1_effv2s_64_shm` |
+| Criar já rodando, sem entrar | `tmux new -d -s juntar -c /srv/almacen/projects/modelagem_prospectra_mine/src/model_DL/regiao_completa 'conda run --no-capture-output -n py_DL python predict/juntar_mapas_gee.py --filtro _shm --sim'` |
+| Entrar | `tmux a -t B1_effv2s_64_shm` |
+| Entrar tirando de outro terminal | `tmux a -d -t B1_effv2s_64_shm` |
+| Entrar na do .251 | `ssh -t geoserverI5 tmux a -t predict` |
+| Sair sem parar (detach) | `Ctrl+b`, solta, `d` |
+| Trocar de sessão estando dentro | `Ctrl+b`, `s` (lista; setas e Enter) |
+| Rolar a saída | `Ctrl+b`, `[`; setas/PgUp; `q` sai |
+| Renomear a sessão atual | `Ctrl+b`, `$` |
+
+Com `tmux new -d -s nome 'comando'`, a sessão fecha sozinha quando o comando acaba
+e a saída se perde; para guardar, termine o comando com `2>&1 | tee arquivo.txt`
+(como nos laços da seção 5) ou crie a sessão vazia e rode o comando dentro dela.
+
+### Encerrar
+
+```bash
+tmux kill-session -t juntar      # uma sessão (para o que roda nela)
+```
+
+Antes de matar, confira com o `capture-pane` que o comando terminou: matar a
+sessão mata o `python` junto. Para parar só o comando e manter a sessão, entre
+nela e use `Ctrl+c`. `tmux kill-server` fecha todas as sessões do servidor de uma
+vez, inclusive as que ainda estão rodando.

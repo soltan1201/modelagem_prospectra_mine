@@ -18,8 +18,8 @@ Convenções dos dados (iguais em todo o pipeline v4 / zero-cloud):
 | Pasta | Conteúdo |
 |---|---|
 | `./` | estimativa do SWIR (`train_swir_models*`, `estimar_swir_rf*`, `estimate_swir_gee*`) |
-| `regiao_completa/` | favorabilidade na região toda só com bandas do mosaico + índices espectrais: `preparar_pontos_referencia.py`, `models_ML_fosfato.py` (Maxent + amostras), `baixar_*_maxent.py`, `avaliar_maxent.ipynb`, `selecao_variaveis_RC.ipynb` (variáveis + fundo por cluster, folds = células da grid 5 × 5), `exportar_favorabilidade_ml.py` (por célula), `maxent_alvos.js`, `export_points_mosaic.js`, `CHECKLIST_modelagem_sazonal.md`, registros `registro_favorabilidade_ml_*.csv` |
-| `area_reduzida/` | favorabilidade na área reduzida com mosaico + variáveis CPRM (gama, mag, geologia): `amostras_AR.py`, `selecao_variaveis_AR.ipynb`, `exportar_favorabilidade_AR.py`, `novas_areas_estudo.js`. Importa `models_ML_fosfato` e `exportar_favorabilidade_ml` de `regiao_completa/` |
+| `regiao_completa/` | favorabilidade na região toda só com bandas do mosaico + índices espectrais: `preparar_pontos_referencia.py`, `models_ML_fosfato.py` (Maxent + amostras), `baixar_*_maxent.py`, `avaliar_maxent.ipynb`, `selecao_variaveis_RC.ipynb` (variáveis + fundo por cluster, folds = células da grid 5 × 5), `exportar_favorabilidade_ml.py` (por célula), `js/maxent_alvos.js`, `js/export_points_mosaic.js`, `CHECKLIST_modelagem_sazonal.md`, registros `registro_favorabilidade_ml_*.csv` |
+| `area_reduzida/` | favorabilidade na área reduzida com mosaico + variáveis CPRM (gama, mag, geologia): `amostras_AR.py`, `selecao_variaveis_AR.ipynb`, `exportar_favorabilidade_AR.py`, `js/novas_areas_estudo.js`. Importa `models_ML_fosfato` e `exportar_favorabilidade_ml` de `regiao_completa/` |
 | `models/` | saídas locais (JSON, CSV, figuras) das três frentes, compartilhada |
 
 ## Fluxo atual (resumo)

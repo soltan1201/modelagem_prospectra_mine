@@ -24,12 +24,12 @@ Região toda (bandas + índices do mosaico) em `src/modeling/regiao_completa/`.
 |---|---|---|
 | 1 | `preparar_pontos_referencia.py` | `pontos_referencia` + `src/Dados/referencias/pontos_referencia.csv` |
 | 2 | `models_ML_fosfato.py` etapa 1 (mosaico: único, v1 ou os dois) | `maxent_amostras_<mosaico>_bandas_indices` |
-| 3 | `baixar_amostras_maxent.py` (ou export Drive em `export_points_mosaic.js`) | CSVs em `src/Dados/maxent/` |
+| 3 | `baixar_amostras_maxent.py` (ou export Drive em `js/export_points_mosaic.js`) | CSVs em `src/Dados/maxent/` |
 | 4 | `avaliar_maxent.ipynb` | métricas, figuras `models/figuras_avaliacao_maxent/c<célula>_*.png`, `models/ranking_features_shap_*.csv` |
 | 4b | `selecao_variaveis_RC.ipynb` (folds = células da grid 5 × 5) | `models/variaveis_RC_<sufixo>.json`, `models/cluster_fundo_RC_<sufixo>.json`, `models/avaliacao_pontos_RC_*.csv` |
 | 5 | `exportar_favorabilidade_ml.py` (menu Conjunto: os do JSON ou `fixas`) | `favorabilidade_ml/<modelo>_<alvo>_<mosaico>[_<conjunto>[_fcl]]_<LxCy>` |
-| 6 | `src/show_mosaics/visualizar_favorabilidade_ml.js` | histogramas, curva área × limiar |
-| — | `maxent_alvos.js` | prévia Maxent no Code Editor |
+| 6 | `src/modeling/regiao_completa/js/visualizar_favorabilidade_ml.js` | histogramas, curva área × limiar |
+| — | `js/maxent_alvos.js` | prévia Maxent no Code Editor |
 | 7 | `src/model_DL/` (skill `cnn-favorabilidade`) | CNN com pseudo-rótulos de `favorabilidade_ml` |
 | — | `docs/relatorio_avaliacao_modelos/` | relatório LaTeX |
 
@@ -56,7 +56,7 @@ mosaico (só análise). Filtro por alvo/papel é feito na leitura.
 ## Variáveis — `FEATURES_DL` (21, do SHAP de 2026-10-21)
 
 Mesma lista em dois lugares; mude os dois juntos:
-`exportar_favorabilidade_ml.py` (`FEATURES`) e `maxent_alvos.js`
+`exportar_favorabilidade_ml.py` (`FEATURES`) e `js/maxent_alvos.js`
 (`FEATURES_DL`, modo padrão). Origem: célula [34] do notebook.
 
 ## Notebook `avaliar_maxent.ipynb`
@@ -81,7 +81,7 @@ saída `probability` × 10000 Int16; treino com todos os pontos, export por
 célula (grid sem solape). `p` ordena a área; 0,25 é o neutro (1:3).
 Estado (2026-10-22): fosfato no mosaico v1, RF 25/25 e GTB 25/25.
 
-Visualizador `src/show_mosaics/visualizar_favorabilidade_ml.js`: p RF/GTB,
+Visualizador `src/modeling/regiao_completa/js/visualizar_favorabilidade_ml.js`: p RF/GTB,
 diferença, concordância p ≥ limiar (cinza só RF, ciano só GTB, magenta os
 dois), histogramas, curva área × limiar, legenda para prints. Cores e faixas
 em `VIS_P`, `VIS_DIF`, `COR_LIMIAR` (camada e legenda usam as mesmas).

@@ -10,6 +10,7 @@
 //   cluster_fundo_AR_<ID_AR>  bandas 'cluster' (0..K−1, k-means do notebook
 //     selecao_variaveis_AR.ipynb, célula [10e]) e 'treino' (1 = cluster usado
 //     como fundo de treino).
+// Conjunto (CONJUNTO, abaixo): selecao (12 variáveis) ou aster_gama_mag_geo (todas as 42).
 // Versões (VERSAO, abaixo; ID_AR = área + sufixo do mosaico, amostras_AR.py):
 //   irece_shm  mosaico final sazonal harmonizado (aster-mosaico-final_sazonal_hm_razao),
 //              12 variáveis de models/variaveis_AR_irece_shm.json   ← padrão
@@ -26,17 +27,32 @@ var ACERVO = MINE + 'acervo_cprm/';
 var VERSOES = {
   irece_shm: {
     mosaico: 'aster-mosaico-final_sazonal_hm_razao',
-    selecao: ['dist_dobra_km', 'lito_nova_america', 'MAG_nT', 'eU_ppm', 'CT', 'B09', 'eTh_ppm',
-              'U_K', 'mag_thg', 'phosphorite_rbd', 'ferric_ox_4_3', 'mag_res']
+    conjuntos: {
+      selecao: ['dist_dobra_km', 'lito_nova_america', 'MAG_nT', 'eU_ppm', 'CT', 'B09', 'eTh_ppm',
+                'U_K', 'mag_thg', 'phosphorite_rbd', 'ferric_ox_4_3', 'mag_res'],
+      // todas as variáveis (20 ASTER + 8 gama + 3 mag + 11 geologia), ordem do JSON
+      aster_gama_mag_geo: ['B01', 'B3N', 'B09', 'B10', 'SAVI', 'ferric_iron_2_1', 'ferric_ox_4_3', 'gossan_4_2',
+                          'ferrous_sil_5_4', 'sericite_illite_smectite', 'kaolinite_7_5', 'dolomite', 'carbonate_8_6',
+                          'carbonate_13_14', 'quartz_14_12', 'sultan_r', 'sultan_g', 'phosphorite_rbd', 'glcm_contrast',
+                          'glcm_ent', 'eU_ppm', 'eTh_ppm', 'K_pct', 'CT', 'U_Th', 'U_K', 'Th_K', 'eU_res', 'MAG_nT',
+                          'mag_thg', 'mag_res', 'lito_nova_america', 'lito_jussara', 'lito_gabriel', 'lito_irece',
+                          'lito_bebedouro', 'lito_morro_chapeu', 'lito_caboclo', 'lito_tombador', 'lito_cobertura',
+                          'dist_falha_km', 'dist_dobra_km']
+    }
   },
   irece: {
     mosaico: 'aster-mosaico-final',
-    selecao: ['dist_dobra_km', 'gossan_4_2', 'lito_nova_america', 'B10', 'MAG_nT', 'quartz_14_12',
-              'dist_falha_km', 'eU_ppm', 'CT', 'sultan_g', 'eTh_ppm', 'mag_thg', 'ferric_iron_2_1']
+    conjuntos: {
+      selecao: ['dist_dobra_km', 'gossan_4_2', 'lito_nova_america', 'B10', 'MAG_nT', 'quartz_14_12',
+                'dist_falha_km', 'eU_ppm', 'CT', 'sultan_g', 'eTh_ppm', 'mag_thg', 'ferric_iron_2_1']
+    }
   }
 };
 var VERSAO = 'irece_shm';
-var CONJUNTO = 'selecao';
+// conjunto = parte do nome do asset: favorabilidade_AR/<RF|GTB>_fosfato_AR_<VERSAO>_<CONJUNTO>_fcl
+//   'selecao'             12 variáveis escolhidas (recomendado)
+//   'aster_gama_mag_geo'  todas as 42 (só no irece_shm)
+var CONJUNTO = 'aster_gama_mag_geo';
 
 var CFG = VERSOES[VERSAO];
 var NOME_MAPA = '_fosfato_AR_' + VERSAO + '_' + CONJUNTO + '_fcl';
@@ -52,14 +68,27 @@ var COR = {RF: '#222222', GTB: '#17becf'};
 var ESCALA_EST = 300;      // m — percentis, histogramas e área acima do limiar
 var ESCALA_TOA = 1000;     // mosaico = reflectância × 1000
 
-var SELECAO = CFG.selecao;
-var GRUPO = {
-  dist_dobra_km: 'geologia', lito_nova_america: 'geologia', dist_falha_km: 'geologia',
-  gossan_4_2: 'aster', B09: 'aster', B10: 'aster', quartz_14_12: 'aster', sultan_g: 'aster',
-  ferric_iron_2_1: 'aster', ferric_ox_4_3: 'aster', phosphorite_rbd: 'aster',
-  MAG_nT: 'mag', mag_thg: 'mag', mag_res: 'mag',
-  eU_ppm: 'gama', CT: 'gama', eTh_ppm: 'gama', U_K: 'gama'
+if (!CFG.conjuntos[CONJUNTO]) {
+  throw new Error('Conjunto ' + CONJUNTO + ' não definido em VERSOES.' + VERSAO + '.conjuntos');
+}
+var SELECAO = CFG.conjuntos[CONJUNTO];
+var GAMA = ['eU_ppm', 'eTh_ppm', 'K_pct', 'CT', 'U_Th', 'U_K', 'Th_K', 'eU_res'];
+var MAG = ['MAG_nT', 'mag_thg', 'mag_res'];
+// lito_<grupo> → prefixo do SIGLA_UNID (amostras_AR.LITO_GRUPOS)
+var LITO = {
+  lito_nova_america: 'NP2sn', lito_jussara: 'NP2sj', lito_gabriel: 'NP2sg', lito_irece: 'NP2sr',
+  lito_bebedouro: 'NP2be', lito_morro_chapeu: 'M3N1mc', lito_caboclo: 'MPc', lito_tombador: 'MPt',
+  lito_cobertura: 'Q'
 };
+var ESTRUT = {dist_falha_km: ['Falha'], dist_dobra_km: ['clinal', 'forme'], dist_lineamento_km: ['Lineamentos']};
+function grupoDe(n) {
+  if (GAMA.indexOf(n) >= 0) { return 'gama'; }
+  if (MAG.indexOf(n) >= 0) { return 'mag'; }
+  if (LITO[n] || ESTRUT[n]) { return 'geologia'; }
+  return 'aster';
+}
+var GRUPO = {};
+SELECAO.forEach(function (n) { GRUPO[n] = grupoDe(n); });
 var DESCR = {
   dist_dobra_km: 'distância às dobras (km)', gossan_4_2: 'B04/B02 (gossan)',
   lito_nova_america: 'Fm. Nova América (NP2sn)', B09: 'SWIR B09', B10: 'TIR B10',
@@ -67,7 +96,18 @@ var DESCR = {
   quartz_14_12: 'B14/B12 (quartzo)', dist_falha_km: 'distância às falhas (km)', eU_ppm: 'eU (ppm)',
   CT: 'contagem total', sultan_g: 'B04/B01 (Sultan G)', eTh_ppm: 'eTh (ppm)', U_K: 'razão eU/K',
   mag_thg: 'gradiente horizontal (nT/km)', ferric_iron_2_1: 'B02/B01 (ferro férrico)',
-  ferric_ox_4_3: 'B04/B3N (óxido férrico)', phosphorite_rbd: '(ε11+ε13)/(2·ε12) (fosforito)'
+  ferric_ox_4_3: 'B04/B3N (óxido férrico)', phosphorite_rbd: '(ε11+ε13)/(2·ε12) (fosforito)',
+  B01: 'VNIR B01', B3N: 'VNIR B3N', SAVI: 'SAVI (B3N, B02)', ferrous_sil_5_4: 'B05/B04 (silicato ferroso)',
+  sericite_illite_smectite: '(B05+B07)/B06 (sericita)', kaolinite_7_5: 'B07/B05 (caulinita)',
+  dolomite: '(B06+B08)/B07 (dolomita)', carbonate_8_6: 'B08/B06 (carbonato)',
+  carbonate_13_14: 'B13/B14 (carbonato TIR)', sultan_r: 'B04/B07 (Sultan R)',
+  glcm_contrast: 'GLCM contraste B3N', glcm_ent: 'GLCM entropia B3N',
+  K_pct: 'K (%)', U_Th: 'razão eU/eTh', Th_K: 'razão eTh/K', eU_res: 'eU − média 5 km (ppm)',
+  lito_jussara: 'Fm. Salitre, Jussara (NP2sj)', lito_gabriel: 'Fm. Salitre, Gabriel (NP2sg)',
+  lito_irece: 'Fm. Salitre, Irecê (NP2sr)', lito_bebedouro: 'Fm. Bebedouro (NP2be)',
+  lito_morro_chapeu: 'Fm. Morro do Chapéu (M3N1mc)', lito_caboclo: 'Fm. Caboclo (MPc)',
+  lito_tombador: 'Fm. Tombador (MPt)', lito_cobertura: 'coberturas (Q)',
+  dist_lineamento_km: 'distância aos lineamentos (km)'
 };
 
 var PAL_P = ['000004', '3b0f70', '8c2981', 'de4968', 'fe9f6d', 'fcfdbf'];
@@ -78,6 +118,7 @@ var PAL_CL = ['e6194b', '3cb44b', 'ffe119', '4363d8', 'f58231', '911eb4', '46f0f
 var VIS_P   = {min: 0, max: 1, palette: PAL_P};
 var VIS_DIF = {min: -0.5, max: 0.5, palette: PAL_DIV};
 var COR_LIMIAR = ['555555', '17becf', 'ff00ff'];           // só RF, só GTB, os dois
+var COR_CORTE = {RF: 'ff8c00', GTB: '17becf'};             // camada de cada modelo acima do corte
 
 // ----------------------------------------------------------------------------
 // Variáveis (iguais a amostras_AR.py; geofísica mascarada fora da cobertura)
@@ -110,9 +151,21 @@ function aster() {
   img = img.updateMask(sat).toFloat();
   function razao(a, b) { return img.select(a).divide(img.select(b)); }
   // calculadas só as que a versão usa (o mosaico pode não ter todas as bandas)
+  function soma2(a, b, c) { return img.select(a).add(img.select(c)).divide(img.select(b)); }   // (a + c) / b
   var f = {
-    B09: function () { return img.select('B09'); },
-    B10: function () { return img.select('B10'); },
+    SAVI: function () {
+      return img.expression('1.5 * (n - r) / (n + r + 0.5)',
+                            {n: img.select('B3N').divide(ESCALA_TOA), r: img.select('B02').divide(ESCALA_TOA)});
+    },
+    ferrous_sil_5_4: function () { return razao('B05', 'B04'); },
+    sericite_illite_smectite: function () { return soma2('B05', 'B06', 'B07'); },
+    kaolinite_7_5: function () { return razao('B07', 'B05'); },
+    dolomite: function () { return soma2('B06', 'B07', 'B08'); },
+    carbonate_8_6: function () { return razao('B08', 'B06'); },
+    carbonate_13_14: function () { return razao('B13', 'B14'); },
+    sultan_r: function () { return razao('B04', 'B07'); },
+    glcm_contrast: function () { return glcm().select('B3N_contrast'); },
+    glcm_ent: function () { return glcm().select('B3N_ent'); },
     gossan_4_2: function () { return razao('B04', 'B02'); },
     quartz_14_12: function () { return razao('B14', 'B12'); },
     sultan_g: function () { return razao('B04', 'B01'); },
@@ -123,20 +176,30 @@ function aster() {
       return eps.B11.add(eps.B13).divide(eps.B12.multiply(2));
     }
   };
+  // GLCM da B3N como no calcular_features: refl. 0–0,35 → byte 0–255, janela 3 × 3
+  function glcm() {
+    return img.select('B3N').unitScale(0, 0.35 * ESCALA_TOA).multiply(255).clamp(0, 255).toByte()
+              .glcmTexture({size: 1});
+  }
   return ee.Image.cat(SELECAO.filter(function (n) { return GRUPO[n] === 'aster'; })
-                             .map(function (n) { return f[n]().rename(n); }));
+                             .map(function (n) {
+                               return (/^B\d/.test(n) ? img.select(n) : f[n]()).toFloat().rename(n);
+                             }));
 }
 
 function geofisica() {
-  var gama = ee.Image(ACERVO + '1042_gama').select(['eU_ppm', 'eTh_ppm', 'CT', 'U_K']);
+  var gama = ee.Image(ACERVO + '1042_gama').select(GAMA.slice(0, 7));
   var mag = ee.Image(ACERVO + '1042_mag').select('MAG_nT');
-  var pm = mag.projection();
+  var pm = mag.projection(), pg = gama.projection();
+  var euRes = gama.select('eU_ppm')
+    .subtract(gama.select('eU_ppm').reduceNeighborhood(ee.Reducer.mean(), ee.Kernel.circle(5000, 'meters')))
+    .reproject(pg).rename('eU_res');
   var grad = mag.gradient().reproject(pm);
   var thg = grad.select('x').hypot(grad.select('y')).multiply(1000).rename('mag_thg');
   // anomalia local: MAG − média num círculo de 5 km, na grade original (RAIO_RES_M)
   var res = mag.subtract(mag.reduceNeighborhood(ee.Reducer.mean(), ee.Kernel.circle(5000, 'meters')))
                .reproject(pm).rename('mag_res');
-  var geo = ee.Image.cat([gama, mag, thg, res]).toFloat();
+  var geo = ee.Image.cat([gama, euRes, mag, thg, res]).toFloat();
   return geo.updateMask(geo.mask().reduce(ee.Reducer.min()));
 }
 
@@ -148,11 +211,11 @@ function geologia() {
     var f = ee.Filter.or.apply(null, trechos.map(function (t) { return ee.Filter.stringContains('TIPO', t); }));
     return estr.filter(f).distance(20000, 30).unmask(20000).divide(1000);
   }
-  return ee.Image.cat([
-    ee.Image(0).paint(lito.filter(ee.Filter.stringStartsWith('SIGLA_UNID', 'NP2sn')), 1).rename('lito_nova_america'),
-    dist(['Falha']).rename('dist_falha_km'),
-    dist(['clinal', 'forme']).rename('dist_dobra_km')
-  ]).toFloat().clip(AREA);
+  var partes = Object.keys(LITO).map(function (n) {
+    return ee.Image(0).paint(lito.filter(ee.Filter.stringStartsWith('SIGLA_UNID', LITO[n])), 1).rename(n);
+  });
+  Object.keys(ESTRUT).forEach(function (n) { partes.push(dist(ESTRUT[n]).rename(n)); });
+  return ee.Image.cat(partes).toFloat().clip(AREA);
 }
 
 var VARS = ee.Image.cat([aster(), geofisica(), geologia()]).select(SELECAO).clip(AREA);
@@ -188,15 +251,39 @@ secao('Mapas');
 var chkRF = chkCamada('RF', 'p RF', false);
 var chkGTB = chkCamada('GTB', 'p GTB', true);
 var chkDif = chkCamada('dif', 'diferença GTB − RF', false);
-var chkLim = chkCamada('limiar', 'concordância p ≥ limiar', false);
+var chkLimRF = chkCamada('lim_RF', 'RF acima do corte', true);
+var chkLimGTB = chkCamada('lim_GTB', 'GTB acima do corte', false);
+var chkLim = chkCamada('limiar', 'concordância acima do corte de cada modelo', false);
 var chkCl = chkCamada('cluster', 'clusters do fundo (k-means)', false);
 var chkTr = chkCamada('treino', 'clusters de treino (fundo sorteado aqui)', false);
 var chkPt = chkCamada('pontos', 'ocorrências de fosfato', true);
-[chkRF, chkGTB, chkDif, chkLim, chkCl, chkTr, chkPt].forEach(function (c) { painel.add(c); });
+[chkRF, chkGTB, chkDif, chkLimRF, chkLimGTB, chkLim, chkCl, chkTr, chkPt].forEach(function (c) { painel.add(c); });
 
-painel.add(ui.Label('Limiar', {fontSize: '12px', margin: '6px 0 0 8px'}));
-var sldLimiar = ui.Slider({min: 0, max: 1, step: 0.01, value: 0.5, style: {stretch: 'horizontal'}});
-painel.add(sldLimiar);
+// um corte por modelo: o GTB tem p mais concentrado (pouca área acima do mesmo corte do RF)
+painel.add(ui.Label('Limiar por modelo', {fontSize: '12px', margin: '6px 0 0 8px'}));
+var sld = {};
+MODELOS.forEach(function (m) {
+  sld[m] = ui.Slider({min: 0, max: 1, step: 0.01, value: 0.5, style: {stretch: 'horizontal'}});
+  painel.add(ui.Panel([ui.Label(m, {fontSize: '12px', color: COR[m], fontWeight: 'bold', width: '36px'}), sld[m]],
+                      ui.Panel.Layout.flow('horizontal')));
+});
+var chkJuntos = ui.Checkbox('mover os dois juntos', false, null, false, {fontSize: '11px'});
+painel.add(chkJuntos);
+// corte do GTB que deixa a mesma fração da área que o RF deixa acima do corte dele
+painel.add(ui.Button({label: 'GTB com a mesma área do RF', style: {stretch: 'horizontal'}, onClick: function () {
+  chkJuntos.setValue(false);   // senão o RF iria junto
+  var t = sld.RF.getValue();
+  lblArea.setValue('procurando o corte do GTB…');
+  P.select('RF').gte(t).reduceRegion({reducer: ee.Reducer.mean(), geometry: AREA, scale: ESCALA_EST,
+                                      maxPixels: 1e9, bestEffort: true}).evaluate(function (r) {
+    var pct = Math.min(99.9, Math.max(0.1, 100 * (1 - r.RF)));
+    P.select('GTB').reduceRegion({reducer: ee.Reducer.percentile([pct]), geometry: AREA, scale: ESCALA_EST,
+                                  maxPixels: 1e9, bestEffort: true}).evaluate(function (q) {
+      var v = q[Object.keys(q)[0]];
+      sld.GTB.setValue(Math.round(v * 100) / 100);   // dispara atualizarLimiar
+    });
+  });
+}}));
 var lblArea = ui.Label('', {fontSize: '11px', whiteSpace: 'pre-wrap'});
 painel.add(lblArea);
 
@@ -241,28 +328,46 @@ adicionar('RF', P.select('RF'), VIS_P, 'p RF', false);
 adicionar('GTB', P.select('GTB'), VIS_P, 'p GTB', true);
 adicionar('dif', P.select('GTB').subtract(P.select('RF')), VIS_DIF, 'diferença GTB − RF', false);
 adicionar('limiar', ee.Image(), {}, 'p ≥ limiar', false);
+adicionar('lim_GTB', ee.Image(), {}, 'GTB ≥ corte', false);
+adicionar('lim_RF', ee.Image(), {}, 'RF ≥ corte', true);
 adicionar('pontos', PONTOS.filterBounds(AREA).map(function (f) {
   return f.set('estilo', {color: '000000', pointShape: 'star5', pointSize: 8, width: 1, fillColor: 'ff0000'});
 }).style({styleProperty: 'estilo'}), {}, 'ocorrências de fosfato', true);
 
 function atualizarLimiar() {
-  var t = sldLimiar.getValue();
-  var acima = P.gte(t);
+  var t = {RF: sld.RF.getValue(), GTB: sld.GTB.getValue()};
+  var acima = ee.Image.cat([P.select('RF').gte(t.RF), P.select('GTB').gte(t.GTB)]);
+  var txt = t.RF === t.GTB ? 'p ≥ ' + t.RF : 'RF ≥ ' + t.RF + ' · GTB ≥ ' + t.GTB;
   var conc = acima.select('RF').add(acima.select('GTB').multiply(2)).selfMask();   // 1 só RF, 2 só GTB, 3 os dois
   camadas.limiar.setEeObject(conc);
   camadas.limiar.setVisParams({min: 1, max: 3, palette: COR_LIMIAR});
-  camadas.limiar.setName('p ≥ ' + t );
-  lblLegLimiar.setValue('p ≥ ' + t);
-  lblArea.setValue('calculando a área acima de ' + t + '…');
+  camadas.limiar.setName(txt);
+  MODELOS.forEach(function (m) {
+    camadas['lim_' + m].setEeObject(acima.select(m).selfMask());
+    camadas['lim_' + m].setVisParams({palette: [COR_CORTE[m]]});
+    camadas['lim_' + m].setName(m + ' ≥ ' + t[m]);
+  });
+  lblLegLimiar.setValue(txt);
+  lblArea.setValue('calculando a área acima do corte…');
   acima.addBands(acima.select('RF').and(acima.select('GTB')).rename('ambos'))
     .reduceRegion({reducer: ee.Reducer.mean(), geometry: AREA, scale: ESCALA_EST, maxPixels: 1e9, bestEffort: true})
     .evaluate(function (r) {
       if (!r) { return; }
-      lblArea.setValue('Área com p ≥ ' + t + ':  RF ' + (100 * r.RF).toFixed(1) + '%  ·  GTB ' +
+      lblArea.setValue('Área acima do corte (' + txt + '):\nRF ' + (100 * r.RF).toFixed(1) + '%  ·  GTB ' +
                        (100 * r.GTB).toFixed(1) + '%  ·  os dois ' + (100 * r.ambos).toFixed(1) + '%');
     });
 }
-sldLimiar.onChange(atualizarLimiar);
+var sincronizando = false;
+MODELOS.forEach(function (m) {
+  sld[m].onChange(function (v) {
+    if (chkJuntos.getValue() && !sincronizando) {
+      sincronizando = true;
+      MODELOS.forEach(function (o) { if (o !== m) { sld[o].setValue(v); } });
+      sincronizando = false;
+    }
+    atualizarLimiar();
+  });
+});
 
 // uma camada por variável, criada depois dos percentis (faixa de cores)
 var visVar = {};
@@ -273,7 +378,7 @@ VARS.reduceRegion({reducer: ee.Reducer.percentile([2, 98]), geometry: AREA, scal
   Map.layers().remove(camVars);
   SELECAO.forEach(function (n, k) {
     var vis;
-    if (n === 'lito_nova_america') {
+    if (n.indexOf('lito_') === 0) {
       vis = {min: 0, max: 1, palette: ['ffffff', '8c510a']};
     } else {
       var lo = r[n + '_p2'], hi = r[n + '_p98'];
@@ -288,7 +393,7 @@ VARS.reduceRegion({reducer: ee.Reducer.percentile([2, 98]), geometry: AREA, scal
       camadas[n].setShown(v);
       if (v) { mostrarLegendaVar(n); }
     }, false, {fontSize: '12px', margin: '2px 4px'});
-    var faixa = n === 'lito_nova_america' ? '0 / 1' : vis.min + ' – ' + vis.max;
+    var faixa = n.indexOf('lito_') === 0 ? '0 / 1' : vis.min + ' – ' + vis.max;
     painelVars.add(ui.Panel([chk, ui.Label(GRUPO[n] + ' · ' + DESCR[n] + ' · ' + faixa,
                                            {fontSize: '10px', color: '666666', margin: '5px 0'})],
                             ui.Panel.Layout.flow('horizontal', true)));
@@ -377,6 +482,8 @@ legenda.add(titulo('Diferença GTB − RF'));
 legenda.add(barraCores(VIS_DIF));
 legenda.add(linhaEscala(VIS_DIF));
 legenda.add(lblLegLimiar);
+legenda.add(itemCor(COR_CORTE.RF, 'RF acima do corte'));
+legenda.add(itemCor(COR_CORTE.GTB, 'GTB acima do corte'));
 legenda.add(itemCor(COR_LIMIAR[0], 'só RF'));
 legenda.add(itemCor(COR_LIMIAR[1], 'só GTB'));
 legenda.add(itemCor(COR_LIMIAR[2], 'RF e GTB'));
@@ -388,8 +495,8 @@ Map.add(legenda);
 function mostrarLegendaVar(n) {
   legVar.clear();
   legVar.add(titulo(n));
-  if (n === 'lito_nova_america') {
-    legVar.add(itemCor('8c510a', 'NP2sn'));
+  if (n.indexOf('lito_') === 0) {
+    legVar.add(itemCor('8c510a', LITO[n]));
     legVar.add(itemCor('ffffff', 'outras unidades'));
     return;
   }

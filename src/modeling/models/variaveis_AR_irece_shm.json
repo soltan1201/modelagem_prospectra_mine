@@ -212,20 +212,6 @@
    "lito_cobertura",
    "dist_falha_km",
    "dist_dobra_km"
-  ],
-  "selecao": [
-   "dist_dobra_km",
-   "lito_nova_america",
-   "MAG_nT",
-   "eU_ppm",
-   "CT",
-   "B09",
-   "eTh_ppm",
-   "U_K",
-   "mag_thg",
-   "phosphorite_rbd",
-   "ferric_ox_4_3",
-   "mag_res"
   ]
  },
  "usa_geofisica": {
@@ -237,8 +223,7 @@
   "aster_gama_mag": true,
   "aster_gama_mag_geo": true,
   "aster_area_toda": false,
-  "aster_geo_area_toda": false,
-  "selecao": true
+  "aster_geo_area_toda": false
  },
  "recomendado": "selecao",
  "conjunto_base_selecao": "aster_gama_mag_geo",

@@ -126,7 +126,7 @@ python exportar_favorabilidade_ml.py
       `visualizar_favorabilidade_ml.js` filtram só por modelo/alvo/mosaico — pedir o filtro
       por `conjunto` antes de usar os mapas
 
-### 7. Conferir os mapas (`show_mosaics/visualizar_favorabilidade_ml.js`)
+### 7. Conferir os mapas (`js/visualizar_favorabilidade_ml.js`)
 
 - [ ] Mosaico do seletor = sazonal (padrão)
 - [ ] Áreas magenta (RF **e** GTB ≥ 0,5): seguem a geologia ou limites de cena/célula?
@@ -266,7 +266,7 @@ python predict/subir_predicao_gee.py --run /srv/almacen/db_images/runs_cnn/<esco
 - [ ] `--passo 1` nas 25 células → `mapas_passo1/p_<LxCy>_<rodada>.tif`
 - [ ] `preencher_bordas` → `mapas_passo1_preenchido/`
 - [ ] Subida → coleção `cnn_favorabilidade` com `mosaico = aster-mosaico-final_sazonal_hm_razao`
-- [ ] `visualizar_cnn_favorabilidade.js`: hoje o fundo é o mosaico v1; trocar para o
+- [ ] `model_DL/regiao_completa/js/visualizar_cnn_favorabilidade.js`: hoje o fundo é o mosaico v1; trocar para o
       harmonizado se for comparar
 
 ### 15. Relatório de deep learning
